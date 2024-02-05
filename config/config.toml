@@ -1,0 +1,68 @@
+# NOTE: The query requires *ALL* keys provided here; even if the values are empty/None
+
+lang_code = "en" # accepts two-letter name codes, defaults to english if none provided
+
+[facets]
+normalized_country_code = [] # three-letter country code
+normalized_state_name = []   # Postal code
+normalized_city_name = []
+location = []
+# possile business_category values include:
+# legal-team, consumer-payments, transport,
+# finance, amazon-business,
+# selling-partner-services, retail,
+# humanresources, operations-technology,
+# amazon-web-services
+business_category = []
+# possible category values are:
+# medical-health-safety, investigation-loss-prevention, database-administration,
+# customer-service, leadership-development-training,
+# editorial-writing-content-management, economics, human-resources,
+# fulfillment-operations-management, administrative-support, data-science,
+# hardware-development, research-science, design, buying-planning-instock-management,
+# marketing-pr, supply-chain-transportation-management, machine-learning-science,
+# business-merchant-development, legal, systems-quality-security-engineering,
+# business-intelligence, facilities-maintenance-real-estate, solutions-architect,
+# sales-advertising-account-management, project-program-product-management-technical,
+# finance-accounting, operations-it-support-engineering,
+# project-program-product-management
+category = [
+]
+schedule_type_id = ["Full-Time"]
+employee_class = []
+normalized_location = []
+job_function = []
+is_manager = []
+is_intern = []
+
+[criteria]
+offset = 0 # starting offset; will automatically incremement up if needed
+result_limit = 10 # This appears to be a server_side limit
+sort = "recent" # other valid option is "relevant"
+latitude = ""
+longitude = ""
+loc_group_id = []
+loc_query = [
+] # You can provide a text location query here, e.g. "Washington, D.C."
+base_query = '' # text query; appears to take booleans (e.g. AI OR ML OR robotics OR "salsa dancing")
+city = []
+country = [] # e.g. "USA"
+region = []
+county = []
+query_options = []
+
+[headers]
+User-Agent = 'Mozilla/5.0 (Windows NT 10.0; rv:122.0) Gecko/20100101 Firefox/122.0'
+Accept = 'application/json, text/plain, */*'
+Accept-Language = 'en-US,en;q=0.5'
+Accept-Encoding = 'gzip, deflate, br'
+Referer = 'https://www.amazon.jobs/en/search'
+Connection = 'keep-alive'
+
+[db]
+table_name = ""
+
+[email]
+sender = ""
+recipient = ""
+subject = "Amazon Jobs Update"
