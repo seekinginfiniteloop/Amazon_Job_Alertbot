@@ -36,7 +36,7 @@ Amazon Jobs Alertbot is a simple AWS-powered job alert agent that scrapes amazon
 
 Amazon Job Alertbot was born over a weekend (probably more like 6 hours collectively...) out of a simple frustration -- unlike *every other jobs site on earth* -- Amazon jobs doesn't allow you to set up an update agent. It's clearly a deliberate choice, for reasons I can't discern.
 
-Because I enjoy irony, I designed Amazon Jobs Alertbot for easy deployment as an AWS Lambda function, and otherwise use AWS services: DynamoDB to store jobs, Systems Manager's ParamStore to store configurations, CloudWatch Events to trigger the function at a time of your choosing, and Simple Email Service to send you emails with new jobs matching your criteria, and of course CloudWatch for logging. Just in case someone at Amazon thought adding jobs alerts would be too hard; I wanted to make it easy for them if they changed their mind.
+Because I enjoy irony, I designed Amazon Jobs Alertbot for easy deployment as an AWS Lambda function using AWS services: DynamoDB to store jobs, Systems Manager's ParamStore to store configurations, CloudWatch Events to trigger the function at a time of your choosing, and Simple Email Service to send you emails with new jobs matching your criteria, and of course CloudWatch for logging. Just in case someone at Amazon thought adding jobs alerts would be too hard; I wanted to make it easy for them if they changed their mind.
 
 Of course, you can also easily modify the script to run locally, or on an instance of your choice.
 
