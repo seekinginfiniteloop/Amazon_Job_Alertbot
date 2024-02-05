@@ -25,21 +25,11 @@ SOFTWARE.
 -->
 # Amazon Job Alertbot
 
-<div style="text-align: center;">
-![Amazon Jobs Alertbot](amazon_alertbot_sm.png "Amazon Job Alertbot")
-</div>
+![Amazon Job Alertbot](amazon_alertbot_sm.png "Amazon Job Alertbot")
 
-<br />
 
-  <p align="center">
-    Amazon Jobs Alertbot is a simple AWS-powered job alert agent that scrapes amazon.jobs with your search criteria and emails you updates... because Amazon apparently doesn't want you to be able to get updates the easy way.
+Amazon Jobs Alertbot is a simple AWS-powered job alert agent that scrapes amazon.jobs with your search criteria and emails you updates... because Amazon apparently doesn't want you to be able to get updates the easy way.
 
-    <br />
-    <a href="https://github.com/psuedomagi/amazon_job_alertbot/.github/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/psuedomagi/amazon_job_alertbot/.github/issues">Request Feature</a>
-  </p>
-</div>
 
 <!-- ABOUT THE PROJECT -->
 ## About Amazon Job Alertbot
