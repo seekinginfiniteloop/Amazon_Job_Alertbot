@@ -12,7 +12,7 @@ import tomllib
 
 import boto3
 
-app_name = "my-app"  # Replace with your app name
+app_name = "amzn"  # Replace with your app name
 
 ssm = boto3.client("ssm")
 

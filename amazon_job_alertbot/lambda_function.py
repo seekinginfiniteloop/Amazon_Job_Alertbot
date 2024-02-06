@@ -1,9 +1,9 @@
 import difflib
+import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Literal
-import json
 
 import boto3
 import requests
@@ -443,7 +443,11 @@ def fetch_all_jobs(
 def send_email(
     jobs_data: list[dict[str, str | int]],
     sender_email: str,
-    recipient_email: str, sender_arn: str, template_arn: str, kwargs**) -> None:
+    recipient_email: str,
+    sender_arn: str,
+    template_arn: str,
+    **kwargs,
+) -> None:
     """
     Send an email with the job data to the recipient email address.
 
@@ -467,26 +471,26 @@ def send_email(
     ses_client = boto3.client("sesv2", region_name=aws_region)
 
     template_data = {
-        "current_date": datetime.now().strftime('%d %B %y'),
+        "current_date": datetime.now().strftime("%d %B %y"),
         "jobs_count": len(jobs_data),
-        "jobs_data": jobs_data
+        "jobs_data": jobs_data,
     }
     try:
         response = ses_client.send_email(
-        FromEmailAddress=sender_email,
-        FromEmailAddressIdentityArn=sender_arn,
-        Destination={
-            'ToAddresses': recipient_email,
-        },
-        Content={
-            'Template': {
-                'TemplateName': 'AmznJobsNotice',
-                'TemplateArn': template_arn,
-                'TemplateData': json.dumps(template_data),
-            }
-        },
-        ConfigurationSetName='amznjobsender',
-    )
+            FromEmailAddress=sender_email,
+            FromEmailAddressIdentityArn=sender_arn,
+            Destination={
+                "ToAddresses": recipient_email,
+            },
+            Content={
+                "Template": {
+                    "TemplateName": "AmznJobsNotice",
+                    "TemplateArn": template_arn,
+                    "TemplateData": json.dumps(template_data),
+                }
+            },
+            ConfigurationSetName="amznjobsender",
+        )
     except ClientError as e:
         logging.error(f"email send failed: {e.response['Error']['Message']}")
     else:
