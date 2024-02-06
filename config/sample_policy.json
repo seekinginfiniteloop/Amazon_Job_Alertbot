@@ -11,6 +11,8 @@
                 "dynamodb:Query",
                 "dynamodb:UpdateItem",
                 "ses:SendEmail",
+                "ses:GetEmailTemplate",
+                "ses:SendTemplatedEmail",
                 "ssm:GetParametersByPath",
                 "ssm:GetParameters",
                 "ssm:DescribeParameters",
@@ -19,16 +21,16 @@
                 "logs:PutLogEvents"
             ],
             "Resource": [
-                "arn:aws:dynamodb:us-east-1:{your_id}:table/{yourtable}",
-                "arn:aws:ses:*:{your_id}:configuration-set/*",
-                "arn:aws:ses:*:{your_id}:template/*",
-                "arn:aws:ses:*:{your_id}:identity/*",
-                "arn:aws:ssm:us-east-1:{your_id}:parameter/*",
-                "arn:aws:logs:us-east-1:{your_id}:log-group:/aws/lambda/{yourlambdafuncname}:*"
+                "arn:aws:dynamodb:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:table/YOUR_TABLE_NAME",
+                "arn:aws:ses:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:configuration-set/*",
+                "arn:aws:ses:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:template/*",
+                "arn:aws:ses:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:identity/*",
+                "arn:aws:ssm:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:parameter/*",
+                "arn:aws:logs:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:log-group:/aws/lambda/NAME_OF_YOUR_LAMBDAFUNC:*"
             ],
             "Condition": {
                 "StringEquals": {
-                    "aws:SourceArn": "arn:aws:lambda:us-east-1:{your_id}:function:{yourlambdafuncname}"
+                    "aws:SourceArn": "arn:aws:lambda:YOUR_AWS_REGION:YOUR_ACCOUNT_ID:function:NAME_OF_YOUR_LAMBDAFUNC"
                 }
             }
         }

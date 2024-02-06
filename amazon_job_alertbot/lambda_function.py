@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Literal
+import json
 
 import boto3
 import requests
@@ -442,9 +443,7 @@ def fetch_all_jobs(
 def send_email(
     jobs_data: list[dict[str, str | int]],
     sender_email: str,
-    recipient_email: str,
-    email_subject: str,
-) -> None:
+    recipient_email: str, sender_arn: str, template_arn: str, kwargs**) -> None:
     """
     Send an email with the job data to the recipient email address.
 
@@ -463,47 +462,31 @@ def send_email(
         None
 
     """
-
     aws_region = os.environ["AWS_REGION"]
-    ses_client = boto3.client("ses", region_name=aws_region)
-    subject = f"{email_subject}: {datetime.now().date().strftime('%d %B %y')}"
-    body_text_lines = [
-        f"{subject}\r\nnew jobs: {len(jobs_data)}",
-        *(
-            f"{job.get('title', 'No Title')}, {job.get('city', 'unknown city')}\n"
-            f"{job.get('id_icims', 000000)}\n"
-            f"https://amazon.jobs{job.get('job_path', '#')}\n\n"
-            f"{job.get('description_short', 'no short description')}\n\n"
-            f"apply: https://amazon.jobs{job.get('url_next_step', '#')}\n\n"
-            for job in jobs_data
-        ),
-    ]
-    body_text = "\n".join(body_text_lines)
-    body_html_lines = [
-        f"<html><head></head><body><h1>{subject}</h1><br>new jobs: {len(jobs_data)}",
-        *(
-            f"<p><h2><a href='https://amazon.jobs{job.get('job_path', '#')}'>"
-            f"{job.get('title', 'No Title')}</a>, {job.get('city', 'unknown city')}</h2></p>"
-            f"{job.get('description_short', 'no short description')}</p><br>"
-            f"<p><a href='https://amazon.jobs{job.get('url_next_step', '#')}'>apply</a></p><br>"
-            for job in jobs_data
-        ),
-        "</body></html>",
-    ]
-    body_html = "".join(body_html_lines)
 
+    ses_client = boto3.client("sesv2", region_name=aws_region)
+
+    template_data = {
+        "current_date": datetime.now().strftime('%d %B %y'),
+        "jobs_count": len(jobs_data),
+        "jobs_data": jobs_data
+    }
     try:
         response = ses_client.send_email(
-            Destination={"ToAddresses": [recipient_email]},
-            Message={
-                "Body": {
-                    "Html": {"Charset": "UTF-8", "Data": body_html},
-                    "Text": {"Charset": "UTF-8", "Data": body_text},
-                },
-                "Subject": {"Charset": "UTF-8", "Data": subject},
-            },
-            Source=sender_email,
-        )
+        FromEmailAddress=sender_email,
+        FromEmailAddressIdentityArn=sender_arn,
+        Destination={
+            'ToAddresses': recipient_email,
+        },
+        Content={
+            'Template': {
+                'TemplateName': 'AmznJobsNotice',
+                'TemplateArn': template_arn,
+                'TemplateData': json.dumps(template_data),
+            }
+        },
+        ConfigurationSetName='amznjobsender',
+    )
     except ClientError as e:
         logging.error(f"email send failed: {e.response['Error']['Message']}")
     else:

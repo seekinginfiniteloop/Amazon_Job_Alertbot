@@ -46,6 +46,8 @@ Until I find some spare time to provide more detailed instructions, this guide a
 <!-- GETTING STARTED -->
 ## Getting Started
 
+I'll be adding a SAM template for automated deployment soon; in the meantime:
+
 The script is ready to deploy as a Lambda function. To get it running, you need to:
 
 ### On Your Computer:

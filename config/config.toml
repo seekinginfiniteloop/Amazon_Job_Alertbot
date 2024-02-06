@@ -26,8 +26,7 @@ business_category = []
 # sales-advertising-account-management, project-program-product-management-technical,
 # finance-accounting, operations-it-support-engineering,
 # project-program-product-management
-category = [
-]
+category = []
 schedule_type_id = ["Full-Time"]
 employee_class = []
 normalized_location = []
@@ -64,5 +63,8 @@ table_name = ""
 
 [email]
 sender = ""
-recipient = ""
-subject = "Amazon Jobs Update"
+recipient = [""]
+# arn for the verified sender (i.e. @my_domain.com is the verified domain for your
+# sender email, use its arn)
+sender_arn = ""
+template_arn = ""

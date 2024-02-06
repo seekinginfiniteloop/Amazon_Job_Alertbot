@@ -8,8 +8,9 @@
 # Use the config.toml to personalize your settings and then use this to push them to
 # #AWS.
 
-import boto3
 import tomllib
+
+import boto3
 
 app_name = "my-app"  # Replace with your app name
 
