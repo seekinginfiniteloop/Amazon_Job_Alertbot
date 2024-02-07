@@ -508,6 +508,8 @@ def lambda_handler(event, context) -> None:
 
     logging.info("Lambda function execution started")
     config = get_parameters_by_path(path_prefix="/amznalertbot/")
+    for key, value in config:
+        logging.info(f"captured paramters {key}: {value}")
     lang_code = config.get("lang_code") or "en"
     base_url = f"https://www.amazon.jobs/{lang_code}/search.json"
     if data := fetch_all_jobs(
