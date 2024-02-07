@@ -23,22 +23,19 @@ def get_parameters_by_path(path_prefix: str) -> dict[Any, Any]:
     Returns:
         dict[Any, Any]: A dictionary containing the retrieved parameter names and their corresponding values.
 
-    Examples:
-        # Example usage
-        parameters = get_parameters_by_path("/myapp/config")
     """
 
     ssm = boto3.client("ssm")
-    param_details = ssm.describe_parameters(
-        ParameterFilters=[
-            {"Key": "Name", "Option": "BeginsWith", "Values": [path_prefix]}
-        ]
-    )
-    if param_names := [param["Name"] for param in param_details["Parameters"]]:
-        parameters = ssm.get_parameters(Names=param_names, WithDecryption=False)
-        return {param["Name"]: param["Value"] for param in parameters["Parameters"]}
-    else:
-        return {}
+    paginator = ssm.get_paginator("get_parameters_by_path")
+    parameters = {}
+
+    for page in paginator.paginate(
+        Path=path_prefix, Recursive=True, WithDecryption=False
+    ):
+        for param in page["Parameters"]:
+            parameters[param["Name"]] = param["Value"]
+
+    return parameters
 
 
 def process_string(string: str) -> str:
