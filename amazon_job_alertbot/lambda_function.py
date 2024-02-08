@@ -1,3 +1,4 @@
+import ast
 import difflib
 import json
 import logging
@@ -10,7 +11,8 @@ import requests
 from botocore.exceptions import ClientError
 from requests import Response, Session
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getlogger()
+logger.setLevel("DEBUG")
 
 
 def get_parameters_by_path(path_prefix: str) -> dict[Any, Any]:
@@ -33,7 +35,7 @@ def get_parameters_by_path(path_prefix: str) -> dict[Any, Any]:
         Path=path_prefix, Recursive=True, WithDecryption=False
     ):
         for param in page["Parameters"]:
-            parameters[param["Name"]] = param["Value"]
+            parameters[param["Name"]] = ast.literal_eval(param["Value"])
 
     return parameters
 
@@ -119,7 +121,7 @@ def fetch_job_data(
 
     response: Response = session.get(url=url, headers=headers)
     if response.status_code != 200:
-        logging.error(
+        logger.error(
             f"Error: Received status code {response.status_code} from the server."
         )
         return None
@@ -127,7 +129,7 @@ def fetch_job_data(
     try:
         return response.json(strict=False)
     except ValueError as e:
-        logging.error(f"Error: Unable to parse JSON response. {e}")
+        logger.error(f"Error: Unable to parse JSON response. {e}")
         return None
 
 
@@ -179,7 +181,7 @@ def update_job(job, table) -> None:
             ":last_scraped_time": datetime.now(tz=timezone.utc),
         },
     )
-    logging.info(f"Updated job with ID {job['id_icims']}")
+    logger.info(f"Updated job with ID {job['id_icims']}")
 
 
 def store_job_with_diff(job: dict[str, str | int], table: str) -> None:
@@ -269,7 +271,7 @@ def get_existing_job(job_id: int, table) -> Any | None:
         response = table.get_item(Key={"id_icims": job_id})
         return response.get("Item")
     except ClientError as e:
-        logging.error(e.response["Error"]["Message"])
+        logger.error(e.response["Error"]["Message"])
         return None
 
 
@@ -291,7 +293,7 @@ def store_job(job, table) -> None:
     try:
         table.put_item(Item=job)
     except ClientError as e:
-        logging.error(e.response["Error"]["Message"])
+        logger.error(e.response["Error"]["Message"])
 
 
 def store_last_scrape_time(table, last_scrape_time: datetime) -> None:
@@ -433,7 +435,7 @@ def fetch_all_jobs(
 
         criteria["offset"] += 1
     store_last_scrape_time(table=table, last_scrape_time=datetime.now(tz=timezone.utc))
-    logging.info(f"collected {len(all_jobs)} to send")
+    logger.info(f"collected {len(all_jobs)} to send")
     return all_jobs
 
 
@@ -489,9 +491,9 @@ def send_email(
             ConfigurationSetName="amznjobsender",
         )
     except ClientError as e:
-        logging.error(f"email send failed: {e.response['Error']['Message']}")
+        logger.error(f"email send failed: {e.response['Error']['Message']}")
     else:
-        logging.info("Email sent! Message ID:", response["MessageId"])
+        logger.info("Email sent! Message ID:", response["MessageId"])
 
 
 def lambda_handler(event, context) -> None:
@@ -506,10 +508,10 @@ def lambda_handler(event, context) -> None:
         None
     """
 
-    logging.info("Lambda function execution started")
+    logger.info("Lambda function execution started")
     config = get_parameters_by_path(path_prefix="/amznalertbot/")
-    for key, value in config:
-        logging.info(f"captured paramters {key}: {value}")
+    for key, value in config.items():
+        logger.debug(f"captured paramters {key}: {value}")
     lang_code = config.get("lang_code") or "en"
     base_url = f"https://www.amazon.jobs/{lang_code}/search.json"
     if data := fetch_all_jobs(
@@ -521,7 +523,4 @@ def lambda_handler(event, context) -> None:
         lang_code=lang_code,
     ):
         send_email(jobs_data=data, **config.get("email", {}))
-    logging.info("Lambda function execution completed")
-
-
-lambda_handler(event=None, context=None)
+    logger.info("Lambda function execution completed")
