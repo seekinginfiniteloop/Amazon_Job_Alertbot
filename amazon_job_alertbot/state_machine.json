@@ -1,0 +1,166 @@
+{
+  "Comment": "State Machine for orchestrating Amazon Jobs alert bot",
+  "StartAt": "FetchParameters",
+  "States": {
+    "FetchParameters": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:ssm:getParametersByPath",
+      "Parameters": {
+        "Path.$": "$.param_path",
+        "Recursive": true,
+        "WithDecryption": false
+      },
+      "Next": "ExtractSearchParams",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "HandleError"
+        }
+      ]
+    },
+    "ExtractSearchParams": {
+      "Type": "Pass",
+      "Parameters": {
+        "params.$": "$.Parameters[?(@.Name.endsWith('/search/'))].Value"
+
+      },
+      "OutputPath": "params.$",
+      "Next": "InvokeJobScraper"
+    },
+    "ChooseScraper": {
+      "Type": "Choice",
+      "Choices": [
+        
+      ]
+    }
+    "InvokeJobScraper": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:amzn_job_scraper",
+        "Payload.$": "$.params"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 600,
+      "Next": "EvalScrapeResponse"
+    },
+    "HandleError": {
+      "Type": "Fail",
+      "Error": "ParameterFetchError",
+      "Cause": "Failed to fetch parameters"
+    },
+    "EvalScrapeResponse": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.jobs",
+          "IsPresent": true,
+          "Next": "ExtractDBParams"
+        }
+      ],
+      "Default": "EndState"
+    },
+    "ExtractDBParams": {
+      "Type": "Pass",
+      "Parameters": {
+        "dbparams.$": "$.Parameters[?(@.Name.endsWith('/db/'))].Value"
+      },
+      "Next": "InvokeJobStore"
+    },
+    "InvokeJobStore": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:amzn_job_store",
+        "Payload.$": [
+          "$.dbparams",
+          "$.jobs",
+          "$.remaining_hits"
+        ]
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 600,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "DBError"
+        }
+      ],
+      "Next": "EvalStoreResponse"
+    },
+    "DBError": {
+      "Type": "Fail",
+      "Error": "DBError",
+      "Cause": "Failed to store jobs in database"
+    },
+    "EvalStoreResponse": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.remaining_hits",
+              "NumericGreaterThan": 0
+            },
+            {
+              "Variable": "$.more_jobs",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.new_jobs",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.newest_scrape",
+              "IsPresent": true
+            }
+          ],
+          "Next": "InvokeJobScraperWithLimit"
+        }
+      ],
+      "Default": "EndState"
+    },
+    "InvokeJobScraperWithLimit": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:123456789012:function:amzn_job_scraper",
+        "Payload.$": [
+          "$.params",
+          "$.remaining_hits",
+          "$.newest_scrape"
+        ]
+      },
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 720,
+      "Next": "EvalScrapeResponse"
+    },
+
+    // ... More states as needed ...
+    "EndState": {
+      "Type": "Succeed"
+    }
+  }
+}
+// New plan: Trigger each search batch individually. Use a state loop to grab each batch and send to DB then to SQS. From DB, only send the keys we need for the email.
