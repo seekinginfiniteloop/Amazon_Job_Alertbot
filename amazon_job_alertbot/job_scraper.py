@@ -1,13 +1,32 @@
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from logging import Logger
+from typing import Any
 
 import requests
 from requests import Response, Session
 
 logger: Logger = logging.getLogger(name="jobs_scraper")
 logger.setLevel(level="DEBUG")
+
+
+def set_vars(event: dict[Any, Any]) -> tuple[Any | None, Any]:
+    """
+    Sets the variables based on the given event dictionary.
+
+    Args:
+        event (dict[Any, Any]): A dictionary representing the event.
+
+    Returns:
+        tuple[Any | None, Any]: A tuple containing the values of "params" and "remaining_hits" from the event dictionary.
+            If "remaining_hits" is not present, the value of "newest_scrape" is returned instead.
+
+    """
+    params = event.get("searchparams")
+    params["criteria"]["offset"] = event.get("next_offset", 0)
+    return params, event.get("remaining_hits"), event.get("newest_scrape")
 
 
 def process_string(string: str) -> str:
@@ -133,7 +152,7 @@ def fetch_job_data(
 
 
 def fetch_jobs(
-    search_params: dict[str, str | int | None],
+    search_params: dict[str, str | int | None], remaining_hits: int = 0, offset: int = 0
 ) -> (
     tuple[list[dict[str, str | int | None]], dict[str, int | None]] | tuple[None, None]
 ):
@@ -150,11 +169,14 @@ def fetch_jobs(
 
     Args:
         search_params: Search parameters for the scrape.
+        remaining_hits: The number of remaining hits, if any.
+        offset: The offset to use for the search. Defaults to 0.
 
     Returns:
         tuple containing:
         - A list of dictionaries representing the fetched jobs.
         - remaining hits
+        - next_offset
 
     """
     facets, criteria, headers, base_url, session, init_headers = set_params(
@@ -165,15 +187,16 @@ def fetch_jobs(
     search_url: str = gen_search_url(
         url=f"{base_url}/search.json", facets=facets, criteria=criteria
     )
+    all_jobs = []
     if data := fetch_job_data(url=search_url, session=session, headers=headers):
-        remaining_hits = int(data["hits"]) - (
-            (int(criteria["offset"]) + 1) * (int(criteria["result_limit"]))
+        remainder: int = max(
+            remaining_hits - int(criteria["result_limit"])
+            if remaining_hits
+            else (int(data["hits"]) - len(data)),
+            0,
         )
-        all_jobs = []
         all_jobs.extend(data["jobs"])
-        return all_jobs, remaining_hits
-    logger.info("Scrape returned with no data for provided search criteria.")
-    return None, None
+    return all_jobs, remainder, (criteria["offset"] + criteria["result_limit"])
 
 
 def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
@@ -189,7 +212,9 @@ def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
     """
     posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y").date()
     if updated_time_str := job.get("updated_time"):
-        if match := re.match(pattern=r"^(\d{1-3})", string=updated_time_str):
+        if match := re.match(
+            pattern=r"^(\d{1,3})\s[days]{3,4}$", string=updated_time_str
+        ):
             updated_days = int(match[0])
         else:
             updated_days = 0
@@ -197,26 +222,32 @@ def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
     return posted_date
 
 
-def fetch_to_date(
-    search_params: dict[str, str | int | None],
-    remaining_hits: int | str,
-    limit_date: str,
-) -> tuple[list[dict[str, str | int | None]] | None, int, bool]:
-    limit_date = datetime.fromisoformat(limit_date)
-    remaining_hits = int(remaining_hits)
-    search_params["criteria"]["offset"] += min(remaining_hits, 10)
+def check_for_stop_signal(
+    data: list[dict[str, str | int | None]],
+    remaining_hits: int = 0,
+    limit_date: datetime.date | None = None,
+) -> bool:
+    """
+    Checks if the stop signal should be set based on the provided data, remaining hits, and limit date.
+
+    Args:
+        data (list[dict[str, str | int | None]]): The data to check for stop signal.
+        remaining_hits (int): The remaining hits to check for stop signal.
+        limit_date (datetime.date): The limit date to check for stop signal.
+
+    Returns:
+        bool: True if the stop signal should be set, False otherwise.
+    """
+    logger.info(f"Checking for stop signal with {remaining_hits} remaining hits")
     stop_signal = False
-    data, _ = fetch_jobs(search_params=search_params)
-    if data:
-        for job in data:
-                update_date = get_date_updated(job=job)
-                if update_date < limit_date:
-                    stop_signal = True
-                    break
-        remaining_hits -= min(remaining_hits, 10)
-    else:
-        stop_signal = True
-    return data, remaining_hits, stop_signal
+    if limit_date:
+        logger.info(f"Checking for stop signal with limit date {limit_date}")
+    if data and remaining_hits and limit_date:
+        dates = [get_date_updated(job=job) for job in data]
+        stop_signal = any(date < limit_date for date in dates)
+    elif remaining_hits and data:
+        stop_signal = False
+    return stop_signal
 
 
 def lambda_handler(
@@ -234,15 +265,15 @@ def lambda_handler(
     """
     logger.info("Scrape function execution started")
     stop_signal = False
-    if payload := event.get("Payload"):
-        data, remaining_hits, stop_signal = fetch_to_date(**payload)
-    else:
-        data, remaining_hits = fetch_jobs(search_params=event.get("params"))
-
+    params, remaining_hits, limit_date = set_vars(event=event)
+    data, remainder, next_offset = fetch_jobs(
+        search_params=params, remaining_hits=remaining_hits
+    )
+    stop_signal: bool = check_for_stop_signal(
+        data=data, remaining_hits=remainder, limit_date=limit_date
+    )
     jobs = data or []
-    remaining_hits: int = 0 if stop_signal else remaining_hits
-    response = {"jobs": jobs, "remaining_hits": remaining_hits}
-
+    remainder: int = 0 if stop_signal else remainder
     if data and stop_signal:
         logger.info(
             f"Scrape found {len(data)} new jobs; returning to state machine"
@@ -259,4 +290,4 @@ def lambda_handler(
         )
     else:
         logger.info("Scrape found no new jobs, informing state machine")
-    return response
+    return {"jobs": jobs, "remaining_hits": remainder, "next_offset": next_offset}

@@ -16,7 +16,7 @@ ses_client = boto3.client("sesv2", region_name=boto3.session.Session().region_na
 template_data = {}
 template_data = {
     "Subject": "Your Amazon Jobs Update for {{current_date}}",
-    "Html": "<html><head></head><body><h1>Your Amazon Jobs Update for {{current_date}}</h1><br>new jobs: {{jobs_count}}<br>{{#each jobs_data}}<p><h2><a href='https://amazon.jobs{{this.job_path}}'>{{this.title}}, {{this.city}}</a></h2></p>{{this.description_short}}</p><br><p><a href='{{this.url_next_step}}'>apply</a></p><br>{{/each}}</body></html>",
+    "Html": "<html><head></head><body><h1>Your Amazon Jobs Update for {{current_date}}</h1><br>new jobs: {{jobs_count}}<br>{{#each jobs_data}}<p><h2><a href='{{this.job_path}}'>{{this.title}}, {{this.city}}</a></h2></p>{{this.description_short}}</p><br><p><a href='{{this.url_next_step}}'>apply</a></p><br>{{/each}}</body></html>",
 }
 ses_client.create_email_template(
     TemplateName="AmznJobsNotice", TemplateContent=template_data

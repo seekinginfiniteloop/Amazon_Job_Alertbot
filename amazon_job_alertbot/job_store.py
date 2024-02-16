@@ -15,6 +15,23 @@ logger.setLevel(level="DEBUG")
 today = datetime.now(timezone.utc).date()
 today_str: str = today.isoformat()
 
+def set_vars(event) -> tuple[dict[Any] | int | Any | bool | datetime.date | None]:
+    """
+    Set the variables based on the provided event.
+
+    Args:
+        event: The event containing the necessary parameters.
+
+    Returns:
+        tuple: A tuple containing the jobs, remaining hits, table, a boolean value, and the newest scrape.
+
+    """
+    db = boto3.resource("dynamodb")
+    db_params = event.get("dbparams")
+    table = db.Table(db_params["table"])
+    return event.get("jobs", []), event.get("remaining_hits", 0), table, False, event.get("newest_scrape", find_newest_scrape(table=table))
+
+
 def scan_all_items(table_name, key_to_check) -> list[Any]:
     """
     Scans all items in a DynamoDB table and returns a list of items using a Paginator.
@@ -243,6 +260,7 @@ def update_and_store_jobs(data: dict[str, str | int | dict | list], table) -> li
     new_or_updated_jobs: list[Any] = []
     for job in data:
         job["posted_date"], job["last_updated"], job["last_scrape"] = set_dates(job=job)
+        job["job_path"] = f"https://amazon.jobs{job['job_path']}"
         if status := get_status(
             job_id=job["id_icims"], table=table, last_updated=job["last_updated"]
         ):
@@ -260,7 +278,13 @@ def update_and_store_jobs(data: dict[str, str | int | dict | list], table) -> li
 
 def find_newest_scrape(table) -> datetime:
     """
-    Finds the newest last_scrape date that isn't today. We use this for finding how far back to go with subsequent scrapes.
+    Finds the newest last_scrape date that isn't today. We use this for finding how far
+    back to go with subsequent scrapes. If the databse is empty, we set the value to 1.5
+    years ago. With Amazon's "Hire and Develop the Best" core principal, some jobs can
+    stay on the market for an extraordinary time while hiring managers wait out for the
+    perfect candidate.
+
+    We only set this on the first pass since after that we'll be getting newer dates. We retain the value for subsequent runs.
 
     Args:
         table: dynamodb table
@@ -270,9 +294,6 @@ def find_newest_scrape(table) -> datetime:
     """
     has_data = table.scan(ProjectionExpression= 'id_icims', Limit=1):
         if not 'Items' in has_data or len(has_data['Items']) == 0:
-        # if db empty, we go back up to 1.5 yrs - with 'Hire and Develop the Best' as a
-        # core principle, some jobs can stay on the market for a long time while HMs
-        # wait for the perfect candidate.
             return today - timedelta(days = 540)
 
         response = table.scan(
@@ -288,13 +309,41 @@ def find_newest_scrape(table) -> datetime:
 
     return datetime.fromisoformat(items[0]['last_scrape']).date()
 
+def keep_keys(new_jobs: list[dict[str, str | int | dict | list | None]]) -> list[dict[str, str | int | dict | list | None]]
+    """
+    Filters the given list of new jobs and keeps only the specified keys in each job dictionary.
 
-def clean_db(table) -> None:
-    # keeping this here as a TODO, but I plan to implement in a separate function
-    pass
+    Args:
+        new_jobs (list[dict[str, str | int | dict | list | None]]): A list of dictionaries representing new jobs.
 
+    Returns:
+        dict: A dictionary containing the filtered job dictionaries with only the specified keys.
 
-def lambda_handler(event, context) -> dict[str, dict[]]:
+    """
+    keepers = []
+    for job in new_jobs:
+        new = {
+            k: job[k]
+            for k in job.keys()
+            if k
+            in [
+                "id_icims",
+                "title",
+                "company",
+                "location",
+                "last_updated",
+                "posted_date",
+                "city",
+                "description_short",
+                "basic_qualifications",
+                "job_category",
+                "job_path",
+                "url_next_step",
+            ]
+        }
+        keepers.append(new)
+
+def lambda_handler(event, context) -> dict[str, dict[list[dict] | bool | datetime.date | None]]:
     """
     Lambda function handler that fetches job data from Amazon.jobs and sends an email.
 
@@ -307,17 +356,8 @@ def lambda_handler(event, context) -> dict[str, dict[]]:
     """
 
     logger.info("job_store function execution started")
-    db = boto3.resource("dynamodb")
-    (
-        db_param,
-        jobs,
-        remaining_hits,
-    ) = event[:2]
-    table = db.Table(db_param["table"])
-    more_jobs = False
-    newest_scrape = event[3] or find_newest_scrape(table=table)
+    jobs, remaining_hits, table, more_jobs, newest_scrape = set_vars(event=event)
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
-        /
         if (
             len(new_jobs) == len(jobs)
             or min(
@@ -335,7 +375,7 @@ def lambda_handler(event, context) -> dict[str, dict[]]:
         logger.info(
             f"Job Store execution completed. New/updated jobs stored in database: {len(new_jobs)} stored or updated"
         )
-        return {"new_jobs": new_jobs, "more_jobs": more_jobs, "newest_scrape": newest_scrape}
+        return {"new_jobs": keep_keys(new_jobs=new_jobs), "more_jobs": more_jobs, "newest_scrape": newest_scrape}
     logger.info(
         "Job Store function execution completed. No new/updated jobs found, informing state machine."
     )
