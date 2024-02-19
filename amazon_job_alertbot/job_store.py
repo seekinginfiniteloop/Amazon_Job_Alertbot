@@ -370,7 +370,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     )
     return {"status_code": 200, "new_jobs": [], "more_jobs": more_jobs, "newest_scrape": None}
 
-def amzn_job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     """
     Lambda function handler that fetches job data from Amazon.jobs and sends an email.
 

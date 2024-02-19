@@ -3,8 +3,9 @@
   "id": "event-id",
   "replacements": {
     "lang_code": "en",
-    "table_name": "amznjobs",
-    "sns_topic": "job_subscriber"
+    "table_name": "job-agent-store",
+    "sns_topic": "job-agent-subscriber"
+    "sqs_queue_url" : ""
   },
   "SearchSettings": {
     "lang_code": "{{lang_code}}",
@@ -52,7 +53,8 @@
   },
   "DBSettings": {
     "db_name": "dynamodb",
-    "table_name": "{{table_name}}"
+    "table_name": "{{table_name}}",
+    "sqs_queue_url": "{{sqs_queue_url}}"
   },
   "SendSettings": {
     "topic_arn": "arn:{{partition}}:sns:{{region}}:{{account_id}}:{{sns_topic}}",

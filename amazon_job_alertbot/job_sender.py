@@ -240,7 +240,7 @@ def send_jobs(event: dict[str, Any]) -> dict[str, int]:
     return {"status_code": 200}
 
 
-def amzn_job_sender_handler(
+def job_sender_handler(
     event: dict[str, Any], context: dict[str, Any]
 ) -> dict[str, int | str, dict[str, str]]:
     """

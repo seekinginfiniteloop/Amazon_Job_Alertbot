@@ -286,7 +286,7 @@ def scrape(
     }
 
 
-def amzn_job_scraper_handler(
+def job_scraper_handler(
     event: dict[str, Any], context: dict[str, Any]
 ) -> dict[str, list[dict[str, str | int | None]] | str | int | None]:
     """

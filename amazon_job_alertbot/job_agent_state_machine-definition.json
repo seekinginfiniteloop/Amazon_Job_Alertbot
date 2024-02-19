@@ -6,8 +6,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "var_replacer",
-        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:var_replacer"
+        "FunctionName": "${JobAgentScraperFunctionName}",
+        "FunctionARN": "${JobAgentScraperFunctionArn}"
       },
       "Retry": [
         {
@@ -39,8 +39,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-    "FunctionName": "amzn_job_scraper",
-        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_scraper",
+        "FunctionName": "${JobAgentScraperFunctionName}",
+        "FunctionARN": "${JobAgentScraperFunctionArn}",
         "Payload.$": "$"
       },
       "Retry": [
@@ -85,8 +85,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "amzn_job_store",
-        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_store",
+        "FunctionName": "${JobAgentStoreFunctionName}",
+        "FunctionARN": "${JobAgentStoreFunctionArn}",
         "StorePayload.$": {
           "dbparams": "$.dbparams",
           "jobs.$": "$.ScraperResult.jobs",
@@ -141,7 +141,7 @@
                 "Type": "Task",
                 "Resource": "arn:aws:states:::aws-sdk:sqs:SendMessage",
                 "Parameters": {
-                  "QueueUrl": "https://sqs.us-east-1.amazonaws.com/019703030783/JobQueue",
+                  "QueueUrl": "${JobQueueUrl}",
                   "MessageBody": "$.StoreResult.new_jobs"
                 },
                 "Retry": [
@@ -213,8 +213,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "sender",
-        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:job_sender",
+        "FunctionName": "${JobAgentSenderName}",
+        "FunctionARN": "${JobAgentSenderArn}",
         "InvocationType": "RequestResponse",
         "sendparams": "$.sendparams"
       },
@@ -248,8 +248,8 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "error_handler",
-        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:error_handler",
+        "FunctionName": "${ErrorHandlerFunctionName}",
+        "FunctionARN": "${ErrorHandlerFunctionArn}",
         "Payload.$": "$",
         "errorInfo.$": "$.errorInfo"
       },
