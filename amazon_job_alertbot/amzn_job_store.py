@@ -1,6 +1,7 @@
 import contextlib
 import difflib
 import logging
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -15,7 +16,7 @@ logger.setLevel(level="DEBUG")
 today = datetime.now(timezone.utc).date()
 today_str: str = today.isoformat()
 
-def set_vars(event) -> tuple[dict[Any] | int | Any | bool | datetime.date | None]:
+def set_vars(event: dict[str, Any]) -> tuple[dict[Any] | int | Any | bool | datetime.date | None]:
     """
     Set the variables based on the provided event.
 
@@ -32,7 +33,7 @@ def set_vars(event) -> tuple[dict[Any] | int | Any | bool | datetime.date | None
     return event.get("jobs", []), event.get("remaining_hits", 0), table, False, event.get("newest_scrape", find_newest_scrape(table=table))
 
 
-def scan_all_items(table_name, key_to_check) -> list[Any]:
+def scan_all_items(table_name: str, key_to_check: str) -> list[Any]:
     """
     Scans all items in a DynamoDB table and returns a list of items using a Paginator.
 
@@ -343,19 +344,7 @@ def keep_keys(new_jobs: list[dict[str, str | int | dict | list | None]]) -> list
         }
         keepers.append(new)
 
-def lambda_handler(event, context) -> dict[str, dict[list[dict] | bool | datetime.date | None]]:
-    """
-    Lambda function handler that fetches job data from Amazon.jobs and sends an email.
-
-    Args:
-        event: The event data passed to the Lambda function.
-        context: The runtime information of the Lambda function.
-
-    Returns:
-        None
-    """
-
-    logger.info("job_store function execution started")
+def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     jobs, remaining_hits, table, more_jobs, newest_scrape = set_vars(event=event)
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
         if (
@@ -375,8 +364,34 @@ def lambda_handler(event, context) -> dict[str, dict[list[dict] | bool | datetim
         logger.info(
             f"Job Store execution completed. New/updated jobs stored in database: {len(new_jobs)} stored or updated"
         )
-        return {"new_jobs": keep_keys(new_jobs=new_jobs), "more_jobs": more_jobs, "newest_scrape": newest_scrape}
+        return {"status_code": 200, "new_jobs": keep_keys(new_jobs=new_jobs), "more_jobs": more_jobs, "newest_scrape": newest_scrape}
     logger.info(
         "Job Store function execution completed. No new/updated jobs found, informing state machine."
     )
-    return {"new_jobs": [], "more_jobs": more_jobs, "newest_scrape": None}
+    return {"status_code": 200, "new_jobs": [], "more_jobs": more_jobs, "newest_scrape": None}
+
+def amzn_job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    """
+    Lambda function handler that fetches job data from Amazon.jobs and sends an email.
+
+    Args:
+        event: The event data passed to the Lambda function.
+        context: The runtime information of the Lambda function.
+
+    Returns:
+        None
+    """
+
+    logger.info("job_store function execution started")
+    try:
+        return store_to_db(event=event)
+
+    except Exception as e:
+        logger.error(f"Error occurred in Lambda var_replacer: {str(e)}")
+        return {
+            "status_code": 500,
+            "errorType": type(e).__name__,
+            "errorState": context.get("function_name"),
+            "errorMessage": str(e),
+            "stackTrace": traceback.format_exc(),
+        }

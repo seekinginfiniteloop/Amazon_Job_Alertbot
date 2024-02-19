@@ -1,22 +1,46 @@
 {
   "Comment": "State Machine for orchestrating Amazon Jobs alert bot",
-  "StartAt": "SetParams",
+  "StartAt": "ReplaceParams",
   "States": {
-    "SetParams": {
-      "Type": "Pass",
+    "ReplaceParams": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "params.$": {
-          "searchparams.$": "$.SearchSettings",
-          "dbparams.$": "$.DBSettings",
-          "sendparams.$": "$.SendSettings"
+        "FunctionName": "var_replacer",
+        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:var_replacer"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+          "Lambda.ClientExecutionTimeoutException",
+          "Lambda.ServiceException",
+          "Lambda.AWSLambdaException",
+          "Lambda.SdkClientException"
+        ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
         }
-      }
+      ],
+      "TimeoutSeconds": 180,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": {
+            "errorInfo": "$",
+            "sendState.$": "ReplaceParams"
+          },
+          "Next": "HandleError"
+        }
+      ],
+      "Next": "InvokeJobScraper"
     },
     "InvokeJobScraper": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_scraper",
+    "FunctionName": "amzn_job_scraper",
+        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_scraper",
         "Payload.$": "$"
       },
       "Retry": [
@@ -36,22 +60,21 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "ScraperError"
-        }
+          "ResultPath": {
+            "errorInfo": "$",
+            "sendState.$": "InvokeJobScraper"
+        },
+        "Next": "HandleError"
+      }
       ],
       "ResultPath": "$.ScraperResult",
       "Next": "EvalScrapeResponse"
-    },
-    "ScraperError": {
-      "Type": "Fail",
-      "Error": "ScraperError",
-      "Cause": "Failed to scrape jobs from Amazon"
     },
     "EvalScrapeResponse": {
       "Type": "Choice",
       "Choices": [
         {
-          "jobs": "$.ScraperResult.jobs",
+          "Variable": "$.ScraperResult.jobs",
           "IsPresent": true,
           "Next": "InvokeJobStore"
         }
@@ -60,9 +83,10 @@
     },
     "InvokeJobStore": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_store",
+        "FunctionName": "amzn_job_store",
+        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:amzn_job_store",
         "StorePayload.$": {
           "dbparams": "$.dbparams",
           "jobs.$": "$.ScraperResult.jobs",
@@ -86,16 +110,15 @@
       "Catch": [
         {
           "ErrorEquals": ["States.ALL"],
-          "Next": "DBError"
+          "ResultPath": {
+            "errorInfo": "$",
+            "sendState.$": "InvokeJobStore"
+          },
+          "Next": "HandleError"
         }
       ],
       "ResultPath": "$.StoreResult",
       "Next": "CheckForJobs"
-    },
-    "DBError": {
-      "Type": "Fail",
-      "Error": "DBError",
-      "Cause": "Failed to store jobs in database"
     },
     "CheckForJobs": {
       "Type": "Choice",
@@ -116,7 +139,7 @@
             "States": {
             "SendJobBatch": {
                 "Type": "Task",
-                "Resource": "arn:aws:states:::sqs:SendMessage",
+                "Resource": "arn:aws:states:::aws-sdk:sqs:SendMessage",
                 "Parameters": {
                   "QueueUrl": "https://sqs.us-east-1.amazonaws.com/019703030783/JobQueue",
                   "MessageBody": "$.StoreResult.new_jobs"
@@ -170,26 +193,29 @@
     },
     "PassBackToInvoke": {
       "Type": "Pass",
-      "OutputPath": {
-        "searchparams": "$.searchparams",
-        "dbparams": "$.dbparams",
-        "sendparams": "$.sendparams",
-        "remaining_hits": "$.StoreResult.remaining_hits",
-        "newest_scrape": "$.StoreResult.newest_scrape"
+      "Parameters": {
+        "searchparams.$": "$.searchparams",
+        "dbparams.$": "$.dbparams",
+        "sendparams.$": "$.sendparams",
+        "remaining_hits.$": "$.StoreResult.remaining_hits",
+        "newest_scrape.$": "$.StoreResult.newest_scrape"
+        },
+        "Next": "InvokeJobScraper"
       },
-      "Next": "InvokeJobScraper"
-    },
     "PassToSender": {
       "Type": "Pass",
-      "OutputPath": {
+      "Parameters": {
         "sendparams": "$.sendparams"
-      }
-},
+      },
+      "Next": "InvokeSender"
+      },
     "InvokeSender": {
       "Type": "Task",
-      "Resource": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
       "Parameters": {
-        "FunctionName": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "FunctionName": "sender",
+        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:job_sender",
+        "InvocationType": "RequestResponse",
         "sendparams": "$.sendparams"
       },
       "Retry": [
@@ -205,11 +231,64 @@
           "BackoffRate": 2
         }
       ],
-      "TimeoutSeconds": 60,
+      "TimeoutSeconds": 900,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": {
+            "errorInfo": "$",
+            "sendState.$": "InvokeSender"
+        },
+        "Next": "HandleError"
+      }
+      ],
       "End": true
+    },
+    "HandleError": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "error_handler",
+        "FunctionARN": "arn:aws:lambda:us-east-1:019703030783:function:error_handler",
+        "Payload.$": "$",
+        "errorInfo.$": "$.errorInfo"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailedExecution"
+        }
+      ],
+      "Next": "DecideOnError"
+    },
+    "DecideOnError": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+            "Variable": "$.status_code",
+            "NumericEquals": 200
+            },
+            {
+            "Variable": "error_resend",
+            "IsPresent": false
+            }
+          ],
+          "Next": "$.sendState",
+          "ResultPath": {
+              "Payload": "$",
+              "error_resend": true
+          }
+        }
+      ]
+    },
+      "Default": "FailedExecution"
     },
     "EndState": {
       "Type": "Succeed"
+    },
+    "FailedExecution": {
+      "Type": "Fail"
     }
   }
-}

@@ -1,18 +1,15 @@
 import logging
-import os
-import re
-from datetime import datetime, timedelta, timezone
 from logging import Logger
 from typing import Any
 
 import requests
 from requests import Response, Session
 
-logger: Logger = logging.getLogger(name="jobs_scraper")
+logger: Logger = logging.getLogger(name="amzn_request_agent")
 logger.setLevel(level="DEBUG")
 
 
-def set_vars(event: dict[Any, Any]) -> tuple[Any | None, Any]:
+def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     """
     Sets the variables based on the given event dictionary.
 
@@ -20,8 +17,10 @@ def set_vars(event: dict[Any, Any]) -> tuple[Any | None, Any]:
         event (dict[Any, Any]): A dictionary representing the event.
 
     Returns:
-        tuple[Any | None, Any]: A tuple containing the values of "params" and "remaining_hits" from the event dictionary.
-            If "remaining_hits" is not present, the value of "newest_scrape" is returned instead.
+        tuple[Any | None, Any]: A tuple containing the values of
+        "params" and "remaining_hits" from the event dictionary.
+        If "remaining_hits" is not present, the value of
+        "newest_scrape" is returned instead.
 
     """
     params = event.get("searchparams")
@@ -50,7 +49,8 @@ def gen_search_url(
     criteria: dict[str, int | str | list[str]],
 ) -> str:
     """
-    Creates a search URL for Amazon.jobs based on the provided base URL, facets, and criteria.
+    Creates a search URL for Amazon.jobs based on the provided
+    base URL, facets, and criteria.
 
     Args:
         base_url: The base URL for the search.
@@ -157,15 +157,18 @@ def fetch_jobs(
     tuple[list[dict[str, str | int | None]], dict[str, int | None]] | tuple[None, None]
 ):
     """
-    Fetch all jobs from the specified base URL using the provided headers, facets,
-    criteria, database name, table name, and language code.
+    Fetch all jobs from the specified base URL using the provided
+    headers, facets, criteria, database name, table name, and
+    language code.
 
-    The function initializes a session, sets initial headers, and retrieves the initial
-    page to establish a session. It then iteratively fetches job data, extracts and
-    stores the jobs, and updates the criteria to fetch the next page.
-    The function continues this process until all jobs are fetched or no new jobs are
-    found. Finally, it stores the last scrape time, logs the number of collected jobs,
-    and returns all the collected jobs.
+    The function initializes a session, sets initial headers, and
+    retrieves the initial page to establish a session. It then
+    iteratively fetches job data, extracts and stores the jobs,
+    and updates the criteria to fetch the next page. The function
+    continues this process until all jobs are fetched or no new
+    jobs are found. Finally, it stores the last scrape time, logs
+    the number of collected jobs, and returns all the collected
+    jobs.
 
     Args:
         search_params: Search parameters for the scrape.
@@ -199,65 +202,16 @@ def fetch_jobs(
     return all_jobs, remainder, (criteria["offset"] + criteria["result_limit"])
 
 
-def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
-    """
-    Gets the date updated for the job if present, else sets it to the posted date.
-
-    Args:
-        job (dict[str, str | int | None]): The job dictionary containing information
-        about the job.
-
-    Returns:
-        datetime.date: The update date of the job.
-    """
-    posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y").date()
-    if updated_time_str := job.get("updated_time"):
-        if match := re.match(
-            pattern=r"^(\d{1,3})\s[days]{3,4}$", string=updated_time_str
-        ):
-            updated_days = int(match[0])
-        else:
-            updated_days = 0
-        return datetime.now(timezone.utc).date() - timedelta(days=updated_days)
-    return posted_date
-
-
-def check_for_stop_signal(
-    data: list[dict[str, str | int | None]],
-    remaining_hits: int = 0,
-    limit_date: datetime.date | None = None,
-) -> bool:
-    """
-    Checks if the stop signal should be set based on the provided data, remaining hits, and limit date.
-
-    Args:
-        data (list[dict[str, str | int | None]]): The data to check for stop signal.
-        remaining_hits (int): The remaining hits to check for stop signal.
-        limit_date (datetime.date): The limit date to check for stop signal.
-
-    Returns:
-        bool: True if the stop signal should be set, False otherwise.
-    """
-    logger.info(f"Checking for stop signal with {remaining_hits} remaining hits")
-    stop_signal = False
-    if limit_date:
-        logger.info(f"Checking for stop signal with limit date {limit_date}")
-    if data and remaining_hits and limit_date:
-        dates = [get_date_updated(job=job) for job in data]
-        stop_signal = any(date < limit_date for date in dates)
-    elif remaining_hits and data:
-        stop_signal = False
-    return stop_signal
-
-
 def lambda_handler(
-    event, context
+    event: dict[str, Any], context: dict[str, Any]
 ) -> dict[str, list[dict[str, str | int | None]] | str | int | None]:
     """
     Lambda function handler that fetches job data from Amazon.jobs and sends an email.
 
     Args:
-        event: The event data passed to the Lambda function. Event includes the search params for the scrape sent by the State Machine.
+        event: The event data passed to the Lambda function. Event
+        includes the search params for the scrape sent by the
+        State Machine.
         context: The runtime information of the Lambda function.
 
     Returns:
@@ -290,4 +244,9 @@ def lambda_handler(
         )
     else:
         logger.info("Scrape found no new jobs, informing state machine")
-    return {"jobs": jobs, "remaining_hits": remainder, "next_offset": next_offset}
+    return {
+        "status_code": 200,
+        "jobs": jobs,
+        "remaining_hits": remainder,
+        "next_offset": next_offset,
+    }

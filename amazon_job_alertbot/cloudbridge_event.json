@@ -1,0 +1,68 @@
+{
+  "version": "0.1",
+  "id": "event-id",
+  "replacements": {
+    "lang_code": "en",
+    "table_name": "amznjobs",
+    "sns_topic": "job_subscriber"
+  },
+  "SearchSettings": {
+    "lang_code": "{{lang_code}}",
+    "criteria": {
+      "offset": 0,
+      "result_limit": 10,
+      "sort": "recent",
+      "latitude": "",
+      "longitude": "",
+      "loc_group_id": [],
+      "loc_query": [],
+      "base_query": "your search query",
+      "city": [],
+      "country": ["USA"],
+      "region": [],
+      "county": [],
+      "query_options": []
+    },
+    "facets": {
+      "normalized_country_code": ["USA"],
+      "normalized_state_name": [],
+      "normalized_city_name": [],
+      "location": [],
+      "business_category": ["amazon-web-services"],
+      "category": [
+        "project-program-product-management-technical",
+        "solutions-architect",
+        "project-program-product-management-non-tech"
+      ],
+      "schedule_type_id": ["Full-Time"],
+      "employee_class": [],
+      "normalized_location": [],
+      "job_function": [],
+      "is_manager": [],
+      "is_intern": []
+    },
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:122.0) Gecko/20100101 Firefox/122.0",
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "en-US,{{lang_code}};q=0.5",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Referer": "https://www.amazon.jobs/{{lang_code}}/search",
+      "Connection": "keep-alive"
+    }
+  },
+  "DBSettings": {
+    "db_name": "dynamodb",
+    "table_name": "{{table_name}}"
+  },
+  "SendSettings": {
+    "topic_arn": "arn:{{partition}}:sns:{{region}}:{{account_id}}:{{sns_topic}}",
+    "subject": "Your Amazon Jobs For {{today}}",
+    "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
+    "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",
+    "email_intro": "<html><head></head><body><h1>Your Amazon Jobs Update for {{today}}</h1><br>new jobs: {{job_count}}<br>",
+    "email_entry": "<p><h2><a href='{{job_path}}'>{{title}}, {{city}}</a></h2></p>{{description_short}}</p><br><p><a href='{{url_next_step}}'>apply</a></p><br>",
+    "email_outro": "</body></html>",
+    "sms": "new_job: {{title}}, {{city}}\nurl: {{job_path}}\n"
+  },
+  "source": "amzntrigger.event"
+}
