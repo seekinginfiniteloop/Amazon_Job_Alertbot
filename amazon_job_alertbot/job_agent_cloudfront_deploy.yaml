@@ -5,6 +5,12 @@ Description: >
   Creates a deployment role, lambda functions, a Step Function state machine, and necessary IAM roles and policies. Deletes role after creation.
 
 Parameters:
+  YourEmail:
+    Type: String
+    Description: Your email address for job agent notifications
+  LangCode:
+    Type: String
+    Description: Language code for job agent, e.g. 'en'
   BaseNameParameter:
     Type: String
     Description: Base name for resources
@@ -24,16 +30,7 @@ Parameters:
 
 Resources:
 
-  JobAgentLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${BaseName}-log-group'
-      RetentionInDays: 14
-      Tags:
-        - Key: !Ref TagKey
-          Value: !Sub '${BaseName}-logs'
-
-  JobAgentLogRole:
+  JobAgentCFDeploymentRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -41,29 +38,236 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+            Service: !Sub 'cloudformation.${AWS::URLSuffix}'
             Action: sts:AssumeRole
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-cf-deployment-role'
       Policies:
-        - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
+        - PolicyName: JobAgentCFDeploymentPolicy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
               - Effect: Allow
+                Action: "cloudformation:*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation::*"
+                  - !Sub "arn:${AWS::Partition}:iam:*"
+                  - !Sub "arn:${AWS::Partition}:s3:::*"
+                  - !Sub "arn:${AWS::Partition}:sns:*"
+                  - !Sub "arn:${AWS::Partition}:sqs:*"
+                  - !Sub "arn:${AWS::Partition}:lambda:*"
+                  - !Sub "arn:${AWS::Partition}:events:*"
+                  - !Sub "arn:${AWS::Partition}:logs:*"
+                  - !Sub "arn:${AWS::Partition}:xray:*"
+                  - !Sub "arn:${AWS::Partition}:cloudtrail:*"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:*"
+              - Effect: Allow
                 Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !GetAtt JobLogGroup.Arn
+                  - "iam:CreateRole"
+                  - "iam:DeleteRole"
+                  - "iam:AttachRolePolicy"
+                  - "iam:DetachRolePolicy"
+                  - "iam:PutRolePolicy"
+                  - "iam:CreatePolicy"
+                  - "iam:CreatePolicyVersion"
+                  - "iam:DeletePolicy"
+                  - "iam:CreateGroup"
+                  - "iam:DeleteGroup"
+                  - "iam:AttachGroupPolicy"
+                  - "iam:DetachGroupPolicy"
+                  - "iam:PutGroupPolicy"
+                  - "iam:List*"
+                  - "iam:PutRolePermissionsBoundary"
+                  - "iam:PutGroupPermissionsBoundary"
+                  - "iam:DeleteRolePermissionsBoundary"
+                  - "iam:DeleteGroupPermissionsBoundary"
+                  - "iam:SetDefaultPolicyVersion"
+                  - "iam:Tag*"
+                  - "iam:UntagRole"
+                  - "iam:UntagPolicy"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:group/${BaseNameTitleCase}*"
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:DeleteLogGroup"
+                  - "logs:PutRetentionPolicy"
+                  - "logs:Describe*"
+                  - "logs:List*"
+                  - "logs:Tag*"
+                  - "logs:Untag*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/*"
+              - Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - "events:Describe*"
+                  - "events:List*"
+                  - "events:Tag*"
+                  - "events:UnTag*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - states:CreateStateMachine
+                  - states:DeleteStateMachine
+                  - states:UpdateStateMachine
+                  - states:DescribeStateMachine
+                  - states:TagResource
+                  - states:UntagResource
+                  - "states:Describe*"
+                  - "states:List*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${JobAgentStateMachine.StateMachineName}*"
+
+              - Effect: Allow
+                Action:
+                  - "lambda:CreateFunction"
+                  - "lambda:DeleteFunction"
+                  - "lambda:AddLayerVersionPermission"
+                  - "lambda:RemoveLayerVersionPermission"
+                  - "lambda:PublishLayerVersion"
+                  - "lambda:DeleteLayerVersion"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${BaseName}*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:layer:${BaseName}*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:layer:${BaseName}*:*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${VarReplacerFunction.FunctionName}*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ErrorHandlerFunction.FunctionName}*"
+              - Effect: Allow
+                Action:
+                  - "sqs:CreateQueue"
+                  - "sqs:DeleteQueue"
+                  - "sqs:SetQueueAttributes"
+                  - "sqs:Get*"
+                  - "sqs:List*"
+                  - "sqs:AddPermission"
+                  - "sqs:RemovePermission"
+                  - "sqs:TagQueue"
+                  - "sqs:UntagQueue"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:*"
+              - Effect: Allow
+                Action:
+                  - "sns:CreateTopic"
+                  - "sns:DeleteTopic"
+                  - "sns:SetTopicAttributes"
+                  - "sns:Subscribe"
+                  - "sns:Unsubscribe"
+                  - "sns:Get*"
+                  - "sns:List*"
+                  - "sns:Tag*"
+                  - "sns:Untag*"
+                  - "sns:Set*"
+                  - "sns:ConfirmSubscription"
+                  - "sns:AddPermission"
+                  - "sns:RemovePermission"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}"
+                  - !GetAtt JobSubscriberTopicSubscription.Arn
+              - Effect: Allow
+                Action:
+                  - "dynamodb:CreateTable"
+                  - "dynamodb:UpdateTable"
+                  - "dynamodb:DeleteTable"
+                  - "dynamodb:List*"
+                  - "dynamodb:Describe*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${JobAgentStoreTable.TableName}"
+              - Effect: Allow
+                Action:
+                  - "s3:CreateBucket"
+                  - "s3:DeleteBucket"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                  - "s3:PutBucketTagging"
+                  - "s3:PutEncryptionConfiguration"
+                  - "s3:PutLifecycleConfiguration"
+                  - "s3:PutBucketPolicy"
+                  - "s3:PutBucketOwnershipControls"
+                  - "s3:PutBucketLogging"
+                  - "s3:PutBucketAcl"
+                  - "s3:PutBucketVersioning"
+                  - "s3: List*"
+                  - "s3: Get*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket.BucketName}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket.BucketName}/*"
+              - Effect: Allow
+                Action:
+                  - "xray:PutTelemetryRecords"
+                  - "xray:PutTraceSegments"
+                Resource:
+                  - "*"
             Tags:
               - Key: !Ref TagKey
-                Value: !Sub '${BaseName}-log-policy'
+                Value: !Ref PolicyName
+
+  JobAgentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref JobAgentBucket
+      PolicyName: !Sub '${BaseNameTitleCase}BucketPolicy'
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub cloudformation.${AWS::URLSuffix}
+              AWS: !Sub ${AWS::AccountId}
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketPolicy
+              - s3:GetObjectVersion
+              - s3:GetObjectVersionAcl
+              - s3:GetBucketAcl
+              - s3:PutBucketAcl
+            Resource:
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
+              - !Sub 'arn:${AWS::Partition}:cloudformation:::*'
+          - Effect: Allow
+            Principal:
+              Service: !Sub cloudtrail.${AWS::URLSuffix}
+              AWS: !Sub ${AWS::AccountId}
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetBucketAcl
+              - s3:GetBucketPolicy
+              - s3:PutBucketAcl
+            Resource:
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
+              - !Sub 'arn:${AWS::Partition}:cloudtrail:::*'
+          - Effect: Allow
+            Principal:
+              Service: !Sub lambda.${AWS::URLSuffix}
+              AWS: !Sub ${AWS::AccountId}
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
+              - !Sub 'arn:${AWS::Partition}:lambda:::*'
       Tags:
         - Key: !Ref TagKey
-          Value: !Sub '${BaseName}-log-role'
+          Value: !Sub '${BaseName}-bucket-policy'
 
   JobAgentBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !GetAtt JobAgentBucket.BucketName
+      BucketName: !Sub ${BaseNameTitleCase}-${AWS::Account-Id}-{AWS::Region}-bucket
       LifecycleConfiguration:
         Rules:
           - Id: StoreAllInS3OneZoneIA
@@ -75,76 +279,271 @@ Resources:
         - Key: !Ref TagKey
           Value: !Sub '${BaseName}-bucket'
 
-    JobAgentStoreTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: id_icims
-            AttributeType: S
-          - AttributeName: last_updated
-            AttributeType: S
-          - AttributeName: last_scrape
-            AttributeType: S
-          - AttributeName: posted_date
-            AttributeType: S
-          - AttributeName: date_off_market
-            AttributeType: S
-        BillingMode: PROVISIONED
-        ContributorInsightsSpecification:
-          Enabled: true
-        DeletionProtectionEnabled: true
-        GlobalSecondaryIndexes:
-          - IndexName: last_scrape-index
-            ContributorInsightsSpecification:
-              Enabled: true
-            KeySchema:
-              - AttributeName: last_scrape
-                KeyType: HASH
-              - AttributeName: id_icims
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-            ProvisionedThroughput:
-              ReadCapacityUnits: 2
-              WriteCapacityUnits: 2
-          - IndexName: date_off_market-index
-            ContributorInsightsSpecification:
-              Enabled: true
-            KeySchema:
-              - AttributeName: id_icims
-                KeyType: HASH
-              - AttributeName: date_off_market
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-            ProvisionedThroughput:
-              ReadCapacityUnits: 2
-              WriteCapacityUnits: 2
-        KeySchema:
-          - AttributeName: id_icims
-            KeyType: HASH
-          - AttributeName: last_updated
-            KeyType: RANGE
-        LocalSecondaryIndexes:
-          - IndexName: posted_date-index
-            KeySchema:
-              - AttributeName: id_icims
-                KeyType: HASH
-              - AttributeName: posted_date
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-        TableName: !Sub '${BaseName}-store'
-        TableClass: STANDARD_INFREQUENT_ACCESS
-        SSESpecification:
-          SSEEnabled: false
-        Tags:
-          - Key: !Ref TagKey
-            Value: job_db_store
-          - Key: !Ref TagKey
-            Value: !Sub '${BaseName}-agent-bucket'
-      VersioningConfiguration:
-        Status: 'Enabled'
+  JobAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/states/${BaseName}-log-group/'
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-logs'
+
+  JobAgentCloudTrailRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub cloudtrail.${AWS::URLSuffix}
+              AWS: !Sub ${AWS::AccountId}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}TrailLogPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::Account-Id}:log-group:/aws/cloudtrail/:*"
+                  - !Ref JobAgentLogGroup.Arn
+              - Effect: Allow
+                Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:GetBucketAcl
+                - s3:GetBucketPolicy
+                - s3:PutBucketAcl
+                Resource:
+                  - !Ref JobAgentBucket
+                  - !Join ['', [!Ref JobAgentBucket, '/*']]
+            Tags:
+              - Key: !Ref TagKey
+                Value: !Sub '${BaseName}-log-policy'
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-log-role'
+
+  JobAgentCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub '${BaseNameTitleCase}Trail'
+      CloudWatchLogsLogGroupArn: !GetAtt JobAgentLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt JobAgentCloudTrailRole.Arn
+      S3BucketName: !Ref JobAgentBucket.BucketName
+      IncludeGlobalServiceEvents: false
+      IsLogging: true
+      IsMultiRegionTrail: false
+      EnableLogFileValidation: true
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-trail'
+
+  JobAgentLambdaBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+            Service: !Sub lambda.{AWS::URLSuffix}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !GetAtt JobAgentLogGroup.Arn
+            Tags:
+              - Key: !Ref TagKey
+                Value: !Sub '${BaseName}-log-policy'
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-log-role'
+
+  JobAgentStoreTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: id_icims
+          AttributeType: S
+        - AttributeName: last_updated
+          AttributeType: S
+        - AttributeName: last_scrape
+          AttributeType: S
+        - AttributeName: posted_date
+          AttributeType: S
+        - AttributeName: date_off_market
+          AttributeType: S
+      BillingMode: PROVISIONED
+      ContributorInsightsSpecification:
+        Enabled: true
+      DeletionProtectionEnabled: true
+      GlobalSecondaryIndexes:
+        - IndexName: last_scrape-index
+          ContributorInsightsSpecification:
+            Enabled: true
+          KeySchema:
+            - AttributeName: last_scrape
+              KeyType: HASH
+            - AttributeName: id_icims
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+        - IndexName: date_off_market-index
+          ContributorInsightsSpecification:
+            Enabled: true
+          KeySchema:
+            - AttributeName: id_icims
+              KeyType: HASH
+            - AttributeName: date_off_market
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+      KeySchema:
+        - AttributeName: id_icims
+          KeyType: HASH
+        - AttributeName: last_updated
+          KeyType: RANGE
+      LocalSecondaryIndexes:
+        - IndexName: posted_date-index
+          KeySchema:
+            - AttributeName: id_icims
+              KeyType: HASH
+            - AttributeName: posted_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TableName: !Sub '${BaseName}-store'
+      TableClass: STANDARD_INFREQUENT_ACCESS
+      SSESpecification:
+        SSEEnabled: false
+      Tags:
+        - Key: !Ref TagKey
+          Value: job_db_store
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-agent-bucket'
+    VersioningConfiguration:
+      Status: 'Enabled'
+
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${BaseName}-queue-${AWS::AccountId}.fifo'
+      ContentBasedDuplication: true
+      FifoQueue: true
+      MessageRetentionPeriod: 160000
+      VisibilityTimeout: 400
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref QueueName
+
+  JobQueueInlinePolicy:
+    Type: AWS::SQS::QueueInlinePolicy
+    Queue: !Ref JobQueue
+    PolicyDocument:
+      Version: 2012-10-17
+      Statement:
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource: !GetAtt JobQueue.Arn
+          Principal:
+            Service:
+              - !Sub 'sqs.${AWS::URLSuffix}'
+              - !Sub 'states.${AWS::URLSuffix}'
+            AWS: !Sub '${AWS::AccountId}'
+          Condition:
+            ArnEquals:
+              aws:SourceArn: !GetAtt JobAgentStateMachine.Arn'
+        - Effect: Allow
+          Action:
+            - sqs.ReceiveMessage
+            - sqs.DeleteMessage
+            - sqs.GetQueueAttributes
+            - sqs.PurgeQueue
+          Resource: !GetAtt JobQueue.Arn
+          Principal:
+            Service:
+              - !Sub sqs.${AWS::URLSuffix}
+              - !Sub lambda.${AWS::URLSuffix}
+            AWS: !Sub '${AWS::AccountId}'
+          Condition:
+            ArnEquals:
+              aws:SourceArn: !GetAtt JobAgentSenderFunction.Arn'
+    Tags:
+      - Key: !Ref TagKey
+        Value: !Sub '${BaseName}-queue-policy'
+
+  JobSubscriberTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      ContentBasedDeduplication: true
+      DisplayName: AMZN Job Agent Report
+      ArchivePolicy: 2
+      FifoTopic: true
+      TopicName: !Sub '${BaseName}-topic.fifo'
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref TopicName
+
+  JobSubscriberTopicSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !GetAtt JobSubscriberTopic.Arn
+      Protocol: email
+      Endpoint: !Ref YourEmail
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-subscription'
+
+  JobAgentTriggerEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub 'events.${AWS::URLSuffix}'
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}TriggerEventRolePolicy'
+          PolicyDocument:
+          Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: !GetAtt JobAgentStateMachine.Arn
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - xray:PutTelemetryRecords
+                  - xray:PutTraceSegments
+                Resource: !GetAtt JobAgentLogGroup.Arn
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-trigger-event-role'
 
   RequestsLayer:
     Type: AWS::Lambda::LayerVersion
@@ -161,227 +560,300 @@ Resources:
           Value: !Sub '${BaseName}-scraper-requests-layer'
 
   VarReplacerFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub '${BaseName}-var-replacer'
-        Handler: var_replacer.handler
-        Role: !GetAtt '${BaseNameTitleCase}LogRole.Arn'
-        Runtime: python3.11
-        Code:
-          S3Bucket: !GetAtt JobAgentBucket.BucketName
-          S3Key: var_replacer.zip
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref FunctionName
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${BaseName}-var-replacer'
+      Handler: var_replacer.handler
+      Role: !GetAtt JobAgentLambdaBaseRole.Arn
+      Runtime: python3.11
+      Code:
+        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Key: var_replacer.zip
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref FunctionName
 
-    JobAgentScraperFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub '${BaseName}-job-scraper'
-        Handler: job_scraper.handler
-        Role: !GetAtt '${BaseNameTitleCase}LogRole.Arn'
-        Runtime: python3.11
-        Code:
-          S3Bucket: !GetAtt JobAgentBucket.BucketName
-          S3Key: job_scraper.zip
-        Layers:
-          - !Ref RequestsLayer
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref FunctionName
+  JobAgentScraperFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${BaseName}-job-scraper'
+      Handler: job_scraper.handler
+      Role: !GetAtt JobAgentLambdaBaseRole.Arn
+      Runtime: python3.11
+      Code:
+        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Key: job_scraper.zip
+      Layers:
+        - !Ref RequestsLayer
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref FunctionName
 
-    JobAgentStoreFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub '${BaseName}-job-store'
-        Handler: job_store.handler
-        Role: !GetAtt '${BaseNameTitleCase}StoreRole.Arn'
-        Runtime: python3.11
-        Code:
-          S3Bucket: !GetAtt JobAgentBucket.BucketName
-          S3Key: job_store.zip
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref FunctionName
+  JobAgentLambdaStoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+            Service: !Sub lambda.{AWS::URLSuffix}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !GetAtt JobAgentLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                Resource: !GetAtt JobAgentStoreTable.Arn
+            Tags:
+              - Key: !Ref TagKey
+                Value: !Sub '${BaseName}-lambda-store-policy'
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-log-role'
 
-    JobAgentSenderFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub '${BaseName}-job-sender'
-        Handler: job_sender.handler
-        Role: !GetAtt '${BaseNameTitleCase}SenderRole.Arn'
-        Runtime: python3.11
-        Code:
-          S3Bucket: !GetAtt JobAgentBucket.BucketName
-          S3Key: job_sender.zip
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref FunctionName
+  JobAgentStoreFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${BaseName}-job-store'
+      Handler: job_store.handler
+      Role: !GetAtt JobAgentLambdaStoreRole.Arn
+      Runtime: python3.11
+      Code:
+        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Key: job_store.zip
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref FunctionName
 
-    ErrorHandlerFunction:
-      Type: AWS::Lambda::Function
-      Properties:
-        FunctionName: !Sub '${BaseName}-error-handler'
-        Handler: error_handler.handler
-        Role: !GetAtt '${BaseNameTitleCase}LogRole.Arn'
-        Runtime: python3.11
-        Code:
-          S3Bucket: !GetAtt JobAgentBucket.BucketName
-          S3Key: error_handler.zip
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref FunctionName
+  JobAgentLambdaSenderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+            Service: !Sub lambda.{AWS::URLSuffix}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !GetAtt JobAgentLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:PurgeQueue
+                Resource: !GetAtt JobQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !GetAtt JobSubscriberTopic.Arn
+            Tags:
+              - Key: !Ref TagKey
+                Value: !Sub '${BaseName}-lambda-sender-policy'
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-log-role'
 
-    JobAgentStoreTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: id_icims
-            AttributeType: S
-          - AttributeName: last_updated
-            AttributeType: S
-          - AttributeName: last_scrape
-            AttributeType: S
-          - AttributeName: posted_date
-            AttributeType: S
-          - AttributeName: date_off_market
-            AttributeType: S
-        BillingMode: PROVISIONED
-        ContributorInsightsSpecification:
-          Enabled: true
-        DeletionProtectionEnabled: true
-        GlobalSecondaryIndexes:
-          - IndexName: last_scrape-index
-            ContributorInsightsSpecification:
-              Enabled: true
-            KeySchema:
-              - AttributeName: last_scrape
-                KeyType: HASH
-              - AttributeName: id_icims
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-            ProvisionedThroughput:
-              ReadCapacityUnits: 2
-              WriteCapacityUnits: 2
-          - IndexName: date_off_market-index
-            ContributorInsightsSpecification:
-              Enabled: true
-            KeySchema:
-              - AttributeName: id_icims
-                KeyType: HASH
-              - AttributeName: date_off_market
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-            ProvisionedThroughput:
-              ReadCapacityUnits: 2
-              WriteCapacityUnits: 2
-        KeySchema:
-          - AttributeName: id_icims
-            KeyType: HASH
-          - AttributeName: last_updated
-            KeyType: RANGE
-        LocalSecondaryIndexes:
-          - IndexName: posted_date-index
-            KeySchema:
-              - AttributeName: id_icims
-                KeyType: HASH
-              - AttributeName: posted_date
-                KeyType: RANGE
-            Projection:
-              ProjectionType: ALL
-        TableName: !Sub '${BaseName}-store'
-        TableClass: STANDARD_INFREQUENT_ACCESS
-        SSESpecification:
-          SSEEnabled: false
-        Tags:
-          - Key: !Ref TagKey
-            Value: job_db_store
+  JobAgentSenderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${BaseName}-job-sender'
+      Handler: job_sender.handler
+      Role: !GetAtt JobAgentLambdaSenderRole.Arn
+      Runtime: python3.11
+      Code:
+        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Key: job_sender.zip
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref FunctionName
 
-    JobAgentStateMachine:
-      Type: AWS::StepFunctions::StateMachine
-      Properties:
-        StateMachineName: !Sub '${BaseName}-StateMachine'
-        RoleArn: !GetAtt StateMachineExecutionRole.Arn
-        DefinitionS3Location:
-          Bucket: !GetAtt JobAgentBucket.BucketName
-          Key: !Sub '${BaseName}-state-machine-definition.json'
-          Version: !Ref StateMachineVersion
-        DefinitionSubstitution:
-          JobAgentScraperFunctionArn: !GetAtt JobAgentScraperFunction.Arn
-          JobAgentScraperFunctionName: !GetAtt JobAgentScraperFunction.FunctionName
-          JobAgentStoreFunctionArn: !GetAtt JobAgentStoreFunction.Arn
-          JobAgentStoreFunctionName: !GetAtt JobAgentStoreFunction.FunctionName
-          JobAgentSenderFunctionArn: !GetAtt JobAgentSenderFunction.Arn
-          JobAgentSenderFunctionName: !GetAtt JobAgentSenderFunction.FunctionName
-          JobAgentStoreTableName: !GetAtt JobAgentStoreTable.TableName
-          JobAgentStoreTableArn: !GetAtt JobAgentStoreTable.Arn
-          ErrorHandlerFunctionName: !GetAtt ErrorHandlerFunction.FunctionName
-          ErrorHandlerFunctionArn: !GetAtt ErrorHandlerFunction.Arn
-          VarReplacerFunctionName: !GetAtt VarReplacerFunction.FunctionName
-          VarReplacerFunctionArn: !GetAtt VarReplacerFunction.Arn
-          JobQueueUrl: !Sub "https://sqs.${AWS::Region}${AZ}.amazonaws.com/${UserId}/${BaseName}-queue-${AWS::AccountId}.fifo/"
-        StateMachineType: STANDARD
+  ErrorHandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${BaseName}-error-handler'
+      Handler: error_handler.handler
+      Role: !GetAtt JobAgentLambdaBaseRole.Arn
+      Runtime: python3.11
+      Code:
+        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Key: error_handler.zip
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Ref FunctionName
+
+  JobAgentStateMachineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+            Service: !Sub states.${AWS::URLSuffix}
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${BaseNameTitleCase}StateMachineExecutionPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt JobAgentScraperFunction.Arn
+                  - !GetAtt JobAgentStoreFunction.Arn
+                  - !GetAtt JobAgentSenderFunction.Arn
+                  - !GetAtt ErrorHandlerFunction.Arn
+                  - !GetAtt VarReplacerFunction.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt JobQueue.Arn
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource:
+                  - !GetAtt JobAgentLogGroup.Arn
+
+  JobAgentStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${BaseNameTitleCase}-StateMachine'
+      RoleArn: !GetAtt StateMachineExecutionRole.Arn
+      DefinitionS3Location:
+        Bucket: !GetAtt JobAgentBucket.BucketName
+        Key: !Sub '${BaseName}-state-machine-definition.json'
+        Version: !Ref StateMachineVersion
+      DefinitionSubstitution:
+        JobAgentScraperFunctionArn: !GetAtt JobAgentScraperFunction.Arn
+        JobAgentScraperFunctionName: !GetAtt JobAgentScraperFunction.FunctionName
+        JobAgentStoreFunctionArn: !GetAtt JobAgentStoreFunction.Arn
+        JobAgentStoreFunctionName: !GetAtt JobAgentStoreFunction.FunctionName
+        JobAgentSenderFunctionArn: !GetAtt JobAgentSenderFunction.Arn
+        JobAgentSenderFunctionName: !GetAtt JobAgentSenderFunction.FunctionName
+        JobAgentStoreTableName: !GetAtt JobAgentStoreTable.TableName
+        JobAgentStoreTableArn: !GetAtt JobAgentStoreTable.Arn
+        ErrorHandlerFunctionName: !GetAtt ErrorHandlerFunction.FunctionName
+        ErrorHandlerFunctionArn: !GetAtt ErrorHandlerFunction.Arn
+        VarReplacerFunctionName: !GetAtt VarReplacerFunction.FunctionName
+        VarReplacerFunctionArn: !GetAtt VarReplacerFunction.Arn
+        JobQueueUrl: !GetAtt JobQueue.QueueUrl
+        lang_code: !Ref LangCode
+      StateMachineType: STANDARD
+      CloudWatchLogsLogGroup:
+        LogGroupArn: !GetAtt JobAgentLogGroup.Arn
       Tags:
         - Key: !Ref TagKey
           Value: !Ref StateMachineName
 
-    JobQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: !Sub '${BaseName}-queue-${AWS::AccountId}.fifo'
-        ContentBasedDuplication: true
-        FifoQueue: true
-        MessageRetentionPeriod: 160000
-        VisibilityTimeout: 400
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Ref QueueName
-
-    JobQueueInlinePolicy:
-      Type: AWS::SQS::QueueInlinePolicy
-      Queue: !Ref JobQueue
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action:
-              - sqs:SendMessage
-            Resource: !GetAtt JobQueue.Arn
-            Principal:
-              Service: cloudwatch.amazonaws.com
-              AWS: !Sub '${AccountID}'
-            Condition:
-              ArnEquals:
-                aws:SourceArn: !GetAtt JobAgentStateMachine.Arn'
-          - Effect: Allow
-            Action:
-              - sqs.ReceiveMessage
-              - sqs.DeleteMessage
-              - sqs.GetQueueAttributes
-              - sqs.PurgeQueue
-            Resource: !GetAtt JobQueue.Arn
-            Principal:
-              Service: cloudwatch.amazonaws.com
-              AWS: !Sub '${AccountID}'
-            Condition:
-              ArnEquals:
-                aws:SourceArn: !GetAtt JobAgentSenderFunction.Arn'
-      Tags:
-        - Key: !Ref TagKey
-          Value: !Sub '${BaseName}-queue-policy'
-
-    JobSubscriberTopic:
-      Type: AWS::SNS::Topic
-      Properties:
-        Tags:
-          - Key: !Ref TagKey
-            Value: !Sub '${BaseName}-subscriber-topic'
-
-    JobAgentTriggerEvent:
-      Type: AWS::CloudBridge::Event
-      Properties:
-        # CloudBridge configuration
-
-Outputs:
+  JobAgentTriggerEvent:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${BaseName}-trigger-event'
+      Description: A scheduled event used to trigger the state machine and associated functions.
+      ScheduleExpression: rate(24 hours)
+      State: ENABLED
+      Targets:
+        - Id: "TargetFunction"
+          Arn: !GetAtt JobAgentStateMachine.Arn
+          RoleArn: !GetAtt JobAgentTriggerEventRole.Arn
+          Input:
+            - JobSubscriberTopicArn: !GetAtt JobSubscriberTopic.Arn
+            - !Sub >
+              {
+              "version": "1.0",
+              "id": "event-id",
+              "replacements": {
+              },
+              "SearchSettings": {
+                "lang_code": "${lang_code}",
+                "criteria": {
+                  "offset": 0,
+                  "result_limit": 10,
+                  "sort": "recent",
+                  "latitude": "",
+                  "longitude": "",
+                  "loc_group_id": [],
+                  "loc_query": [],
+                  "base_query": "your search query",
+                  "city": [],
+                  "country": ["USA"],
+                  "region": [],
+                  "county": [],
+                  "query_options": []
+                },
+                "facets": {
+                  "normalized_country_code": ["USA"],
+                  "normalized_state_name": [],
+                  "normalized_city_name": [],
+                  "location": [],
+                  "business_category": ["amazon-web-services"],
+                  "category": [
+                    "project-program-product-management-technical",
+                    "solutions-architect",
+                    "project-program-product-management-non-tech"
+                  ],
+                  "schedule_type_id": ["Full-Time"],
+                  "employee_class": [],
+                  "normalized_location": [],
+                  "job_function": [],
+                  "is_manager": [],
+                  "is_intern": []
+                },
+                "headers": {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:122.0) Gecko/20100101 Firefox/122.0",
+                  "Accept": "application/json, text/plain, */*",
+                  "Accept-Language": "en-US,${lang_code};q=0.5",
+                  "Accept-Encoding": "gzip, deflate, br",
+                  "Referer": "https://www.amazon.jobs/${lang_code}/search",
+                  "Connection": "keep-alive"
+                }
+              },
+              "DBSettings": {
+                "db_name": "dynamodb",
+                "table_name": "${JobAgentStoreTable.TableName}",
+                "sqs_queue_url": "${JobQueueUrl}"
+              },
+              "SendSettings": {
+                "topic_arn": "${JobSubscriberTopicArn}",
+                "subject": "Your Amazon Jobs For {{today}}",
+                "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
+                "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",
+                "email_intro": "<html><head></head><body><h1>Your Amazon Jobs Update for {{today}}</h1><br>new jobs: {{job_count}}<br>",
+                "email_entry": "<p><h2><a href='{{job_path}}'>{{title}}, {{city}}</a></h2></p>{{description_short}}</p><br><p><a href='{{url_next_step}}'>apply</a></p><br>",
+                "email_outro": "</body></html>",
+                "sms": "new_job: {{title}}, {{city}}\nurl: {{job_path}}\n"
+              },
+              "source": "${JobAgentTriggerEvent.Name}"
+              }
