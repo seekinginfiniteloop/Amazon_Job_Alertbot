@@ -8,10 +8,19 @@ Parameters:
   YourEmail:
     Type: String
     Description: Your email address for job agent notifications
+  EventSchedule:
+    Type: String
+    Description: EventBridge schedule in appropriate format, e.g. rate(24 hours)
+    Default: rate(24 hours)
   LangCode:
     Type: String
     Description: Language code for job agent, e.g. 'en'
-  BaseNameParameter:
+    Default: en
+  LangCountryCode:
+    Type: String
+    Description: Language country code for job agent, e.g. 'US'
+    Default: US
+  BaseName:
     Type: String
     Description: Base name for resources
     Default: job-agent
@@ -38,7 +47,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-            Service: !Sub 'cloudformation.${AWS::URLSuffix}'
+              Service: !Sub 'cloudformation.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
             Action: sts:AssumeRole
       Tags:
         - Key: !Ref TagKey
@@ -83,7 +93,8 @@ Resources:
                   - "iam:DeleteRolePermissionsBoundary"
                   - "iam:DeleteGroupPermissionsBoundary"
                   - "iam:SetDefaultPolicyVersion"
-                  - "iam:Tag*"
+                  - "iam:TagRole"
+                  - "iam:TagPolicy"
                   - "iam:UntagRole"
                   - "iam:UntagPolicy"
                 Resource:
@@ -124,22 +135,16 @@ Resources:
                   - "states:Describe*"
                   - "states:List*"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${JobAgentStateMachine.StateMachineName}*"
-
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}*"
               - Effect: Allow
                 Action:
-                  - "lambda:CreateFunction"
-                  - "lambda:DeleteFunction"
-                  - "lambda:AddLayerVersionPermission"
-                  - "lambda:RemoveLayerVersionPermission"
-                  - "lambda:PublishLayerVersion"
-                  - "lambda:DeleteLayerVersion"
+                  - "lambda:*"
                 Resource:
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${BaseName}*"
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:layer:${BaseName}*"
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:layer:${BaseName}*:*"
-                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${VarReplacerFunction.FunctionName}*"
-                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ErrorHandlerFunction.FunctionName}*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:var*"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:error*"
               - Effect: Allow
                 Action:
                   - "sqs:CreateQueue"
@@ -152,7 +157,7 @@ Resources:
                   - "sqs:TagQueue"
                   - "sqs:UntagQueue"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:*"
+                  - !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
               - Effect: Allow
                 Action:
                   - "sns:CreateTopic"
@@ -169,8 +174,7 @@ Resources:
                   - "sns:AddPermission"
                   - "sns:RemovePermission"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}"
-                  - !GetAtt JobSubscriberTopicSubscription.Arn
+                  - !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
               - Effect: Allow
                 Action:
                   - "dynamodb:CreateTable"
@@ -178,8 +182,10 @@ Resources:
                   - "dynamodb:DeleteTable"
                   - "dynamodb:List*"
                   - "dynamodb:Describe*"
+                  - "dynamodb:Tag*"
+                  - "dynamodb:Untag*"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${JobAgentStoreTable.TableName}"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${BaseName}*"
               - Effect: Allow
                 Action:
                   - "s3:CreateBucket"
@@ -196,9 +202,11 @@ Resources:
                   - "s3:PutBucketVersioning"
                   - "s3: List*"
                   - "s3: Get*"
+                  - "s3: Tag*"
+                  - "s3: Untag*"
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket.BucketName}"
-                  - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket.BucketName}/*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:s3:::${BaseNameTitleCase}*/*"
               - Effect: Allow
                 Action:
                   - "xray:PutTelemetryRecords"
@@ -207,19 +215,19 @@ Resources:
                   - "*"
             Tags:
               - Key: !Ref TagKey
-                Value: !Ref PolicyName
+                Value: JobAgentCFDeploymentPolicy
 
   JobAgentBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref JobAgentBucket
+      Bucket: '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket'
       PolicyName: !Sub '${BaseNameTitleCase}BucketPolicy'
       PolicyDocument:
         Statement:
           - Effect: Allow
             Principal:
-              Service: !Sub cloudformation.${AWS::URLSuffix}
-              AWS: !Sub ${AWS::AccountId}
+              Service: !Sub 'cloudformation.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
             Action:
               - s3:GetObject
               - s3:PutObject
@@ -232,13 +240,12 @@ Resources:
               - s3:GetBucketAcl
               - s3:PutBucketAcl
             Resource:
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
-              - !Sub 'arn:${AWS::Partition}:cloudformation:::*'
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket', '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket']]
           - Effect: Allow
             Principal:
-              Service: !Sub cloudtrail.${AWS::URLSuffix}
-              AWS: !Sub ${AWS::AccountId}
+              Service: !Sub 'cloudtrail.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
             Action:
               - s3:GetObject
               - s3:PutObject
@@ -247,19 +254,30 @@ Resources:
               - s3:GetBucketPolicy
               - s3:PutBucketAcl
             Resource:
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
-              - !Sub 'arn:${AWS::Partition}:cloudtrail:::*'
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket', '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket']]
           - Effect: Allow
             Principal:
-              Service: !Sub lambda.${AWS::URLSuffix}
-              AWS: !Sub ${AWS::AccountId}
+              Service: !Sub 'lambda.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
             Action:
               - s3:GetObject
             Resource:
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', !Ref JobAgentBucket, '/*']]
-              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', !Ref JobAgentBucket]]
-              - !Sub 'arn:${AWS::Partition}:lambda:::*'
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket', '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket']]
+          - Effect: Allow
+            Principal:
+              Service: !Sub 'states.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
+            Action:
+              - s3:GetObject
+              - s3:GetBucketAcl
+              - s3:GetBucketPolicy
+              - s3:GetObjectVersion
+              - s3:GetObjectVersionAcl
+            Resource:
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3:::', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket', '/*']]
+              - !Join ['', [!Sub 'arn:${AWS::Partition}:s3', '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket']]
       Tags:
         - Key: !Ref TagKey
           Value: !Sub '${BaseName}-bucket-policy'
@@ -267,7 +285,7 @@ Resources:
   JobAgentBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${BaseNameTitleCase}-${AWS::Account-Id}-{AWS::Region}-bucket
+      BucketName: !Sub '${BaseNameTitleCase}-${AWS::AccountId}-${AWS::Region}-bucket'
       LifecycleConfiguration:
         Rules:
           - Id: StoreAllInS3OneZoneIA
@@ -290,14 +308,15 @@ Resources:
 
   JobAgentCloudTrailRole:
     Type: AWS::IAM::Role
+    DependsOn: [JobAgentLogGroup, JobAgentBucket, JobAgentBucketPolicy, JobAgentCFDeploymentRole]
     Properties:
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
             Principal:
-              Service: !Sub cloudtrail.${AWS::URLSuffix}
-              AWS: !Sub ${AWS::AccountId}
+              Service: !Sub 'cloudtrail.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub '${BaseNameTitleCase}TrailLogPolicy'
@@ -309,8 +328,8 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::Account-Id}:log-group:/aws/cloudtrail/:*"
-                  - !Ref JobAgentLogGroup.Arn
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudtrail/:*"
+                  - !GetAtt JobAgentLogGroup.Arn
               - Effect: Allow
                 Action:
                 - s3:GetObject
@@ -335,7 +354,7 @@ Resources:
       TrailName: !Sub '${BaseNameTitleCase}Trail'
       CloudWatchLogsLogGroupArn: !GetAtt JobAgentLogGroup.Arn
       CloudWatchLogsRoleArn: !GetAtt JobAgentCloudTrailRole.Arn
-      S3BucketName: !Ref JobAgentBucket.BucketName
+      S3BucketName: !Sub '${JobAgentBucket.BucketName}'
       IncludeGlobalServiceEvents: false
       IsLogging: true
       IsMultiRegionTrail: false
@@ -352,7 +371,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-            Service: !Sub lambda.{AWS::URLSuffix}
+              Service: !Sub 'lambda.${AWS::URLSuffix}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
@@ -376,6 +395,7 @@ Resources:
   JobAgentStoreTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: !Sub '${BaseName}-store'
       AttributeDefinitions:
         - AttributeName: id_icims
           AttributeType: S
@@ -432,7 +452,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-      TableName: !Sub '${BaseName}-store'
       TableClass: STANDARD_INFREQUENT_ACCESS
       SSESpecification:
         SSEEnabled: false
@@ -441,8 +460,8 @@ Resources:
           Value: job_db_store
         - Key: !Ref TagKey
           Value: !Sub '${BaseName}-agent-bucket'
-    VersioningConfiguration:
-      Status: 'Enabled'
+      VersioningConfiguration:
+        Status: 'Enabled'
 
   JobQueue:
     Type: AWS::SQS::Queue
@@ -454,44 +473,45 @@ Resources:
       VisibilityTimeout: 400
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref QueueName
+          Value: !Sub '${BaseName}-queue-${AWS::AccountId}.fifo'
 
   JobQueueInlinePolicy:
     Type: AWS::SQS::QueueInlinePolicy
-    Queue: !Ref JobQueue
-    PolicyDocument:
-      Version: 2012-10-17
-      Statement:
-        - Effect: Allow
-          Action:
-            - sqs:SendMessage
-          Resource: !GetAtt JobQueue.Arn
-          Principal:
-            Service:
-              - !Sub 'sqs.${AWS::URLSuffix}'
-              - !Sub 'states.${AWS::URLSuffix}'
-            AWS: !Sub '${AWS::AccountId}'
-          Condition:
-            ArnEquals:
-              aws:SourceArn: !GetAtt JobAgentStateMachine.Arn'
-        - Effect: Allow
-          Action:
-            - sqs.ReceiveMessage
-            - sqs.DeleteMessage
-            - sqs.GetQueueAttributes
-            - sqs.PurgeQueue
-          Resource: !GetAtt JobQueue.Arn
-          Principal:
-            Service:
-              - !Sub sqs.${AWS::URLSuffix}
-              - !Sub lambda.${AWS::URLSuffix}
-            AWS: !Sub '${AWS::AccountId}'
-          Condition:
-            ArnEquals:
-              aws:SourceArn: !GetAtt JobAgentSenderFunction.Arn'
-    Tags:
-      - Key: !Ref TagKey
-        Value: !Sub '${BaseName}-queue-policy'
+    Properties:
+      Queue: !Ref JobQueue
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt JobQueue.Arn
+            Principal:
+              Service:
+                - !Sub 'sqs.${AWS::URLSuffix}'
+                - !Sub 'states.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt JobAgentStateMachine.Arn'
+          - Effect: Allow
+            Action:
+              - sqs.ReceiveMessage
+              - sqs.DeleteMessage
+              - sqs.GetQueueAttributes
+              - sqs.PurgeQueue
+            Resource: !GetAtt JobQueue.Arn
+            Principal:
+              Service:
+                - !Sub 'sqs.${AWS::URLSuffix}'
+                - !Sub 'lambda.${AWS::URLSuffix}'
+              AWS: !Sub '${AWS::AccountId}'
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt JobAgentSenderFunction.Arn
+      Tags:
+        - Key: !Ref TagKey
+          Value: !Sub '${BaseName}-queue-policy'
 
   JobSubscriberTopic:
     Type: AWS::SNS::Topic
@@ -503,12 +523,12 @@ Resources:
       TopicName: !Sub '${BaseName}-topic.fifo'
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref TopicName
+          Value: !Sub '${BaseName}-topic.fifo'
 
   JobSubscriberTopicSubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      TopicArn: !GetAtt JobSubscriberTopic.Arn
+      TopicArn: !Sub 'arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}'
       Protocol: email
       Endpoint: !Ref YourEmail
       Tags:
@@ -528,7 +548,7 @@ Resources:
       Policies:
         - PolicyName: !Sub '${BaseNameTitleCase}TriggerEventRolePolicy'
           PolicyDocument:
-          Version: 2012-10-17
+            Version: 2012-10-17
             Statement:
               - Effect: Allow
                 Action:
@@ -551,7 +571,7 @@ Resources:
       LayerName: requests-layer
       Description: Layer containing the Python requests library
       Content:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: requests_layer.zip
       CompatibleRuntimes:
         - python3.11
@@ -567,11 +587,11 @@ Resources:
       Role: !GetAtt JobAgentLambdaBaseRole.Arn
       Runtime: python3.11
       Code:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: var_replacer.zip
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref FunctionName
+          Value: !Sub '${BaseName}-var-replacer'
 
   JobAgentScraperFunction:
     Type: AWS::Lambda::Function
@@ -581,13 +601,13 @@ Resources:
       Role: !GetAtt JobAgentLambdaBaseRole.Arn
       Runtime: python3.11
       Code:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: job_scraper.zip
       Layers:
         - !Ref RequestsLayer
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref FunctionName
+          Value: !Sub '${BaseName}-job-scraper'
 
   JobAgentLambdaStoreRole:
     Type: AWS::IAM::Role
@@ -597,7 +617,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-            Service: !Sub lambda.{AWS::URLSuffix}
+              Service: !Sub 'lambda.${AWS::URLSuffix}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
@@ -633,11 +653,11 @@ Resources:
       Role: !GetAtt JobAgentLambdaStoreRole.Arn
       Runtime: python3.11
       Code:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: job_store.zip
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref FunctionName
+          Value: !Sub '${BaseName}-job-store'
 
   JobAgentLambdaSenderRole:
     Type: AWS::IAM::Role
@@ -647,7 +667,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-            Service: !Sub lambda.{AWS::URLSuffix}
+              Service: !Sub 'lambda.${AWS::URLSuffix}'
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub '${BaseNameTitleCase}LogPolicy'
@@ -687,11 +707,11 @@ Resources:
       Role: !GetAtt JobAgentLambdaSenderRole.Arn
       Runtime: python3.11
       Code:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: job_sender.zip
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref FunctionName
+          Value: !Sub '${BaseName}-job-sender'
 
   ErrorHandlerFunction:
     Type: AWS::Lambda::Function
@@ -701,11 +721,11 @@ Resources:
       Role: !GetAtt JobAgentLambdaBaseRole.Arn
       Runtime: python3.11
       Code:
-        S3Bucket: !GetAtt JobAgentBucket.BucketName
+        S3Bucket: !Sub '${JobAgentBucket.BucketName}'
         S3Key: error_handler.zip
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref FunctionName
+          Value: !Sub '${BaseName}-error-handler'
 
   JobAgentStateMachineExecutionRole:
     Type: AWS::IAM::Role
@@ -715,7 +735,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-            Service: !Sub states.${AWS::URLSuffix}
+              Service: !Sub 'states.${AWS::URLSuffix}'
             Action:
               - sts:AssumeRole
       Policies:
@@ -745,14 +765,23 @@ Resources:
                   - xray:PutTelemetryRecords
                 Resource:
                   - !GetAtt JobAgentLogGroup.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectAcl
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                  - s3:GetBucketAcl
+                Resource: !GetAtt JobAgentBucket.Arn
 
   JobAgentStateMachine:
     Type: AWS::StepFunctions::StateMachine
+    DependsOn: [JobSubscriberTopic, JobSubscriberTopicSubscription, JobAgentBucket, JobAgentStateMachineExecutionRole, JobAgentCFDeploymentRole]
     Properties:
       StateMachineName: !Sub '${BaseNameTitleCase}-StateMachine'
-      RoleArn: !GetAtt StateMachineExecutionRole.Arn
+      RoleArn: !GetAtt JobAgentStateMachineExecutionRole.Arn
       DefinitionS3Location:
-        Bucket: !GetAtt JobAgentBucket.BucketName
+        Bucket: !Sub '${JobAgentBucket.BucketName}'
         Key: !Sub '${BaseName}-state-machine-definition.json'
         Version: !Ref StateMachineVersion
       DefinitionSubstitution:
@@ -768,36 +797,35 @@ Resources:
         ErrorHandlerFunctionArn: !GetAtt ErrorHandlerFunction.Arn
         VarReplacerFunctionName: !GetAtt VarReplacerFunction.FunctionName
         VarReplacerFunctionArn: !GetAtt VarReplacerFunction.Arn
-        JobQueueUrl: !GetAtt JobQueue.QueueUrl
-        lang_code: !Ref LangCode
+        JobQueueUrl: !Sub 'https://sqs.${AWS::Region}.${AWS::URLSuffix}/${AWS::AccountId}/${JobQueue.QueueName}'
       StateMachineType: STANDARD
       CloudWatchLogsLogGroup:
         LogGroupArn: !GetAtt JobAgentLogGroup.Arn
       Tags:
         - Key: !Ref TagKey
-          Value: !Ref StateMachineName
+          Value: !Sub '${BaseNameTitleCase}-StateMachine'
 
   JobAgentTriggerEvent:
     Type: AWS::Events::Rule
+    DependsOn: [JobSubscriberTopicSubscription, JobAgentTriggerEventRole, JobAgentStateMachine]
     Properties:
       Name: !Sub '${BaseName}-trigger-event'
       Description: A scheduled event used to trigger the state machine and associated functions.
-      ScheduleExpression: rate(24 hours)
+      ScheduleExpression: !Ref EventSchedule
       State: ENABLED
       Targets:
         - Id: "TargetFunction"
           Arn: !GetAtt JobAgentStateMachine.Arn
           RoleArn: !GetAtt JobAgentTriggerEventRole.Arn
           Input:
-            - JobSubscriberTopicArn: !GetAtt JobSubscriberTopic.Arn
             - !Sub >
               {
               "version": "1.0",
-              "id": "event-id",
+              "id": "${BaseName}-trigger-event-${JobAgentStateMachine.StateMachineName}-Execution",
               "replacements": {
               },
               "SearchSettings": {
-                "lang_code": "${lang_code}",
+                "lang_code": "${LangCode}",
                 "criteria": {
                   "offset": 0,
                   "result_limit": 10,
@@ -834,19 +862,19 @@ Resources:
                 "headers": {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:122.0) Gecko/20100101 Firefox/122.0",
                   "Accept": "application/json, text/plain, */*",
-                  "Accept-Language": "en-US,${lang_code};q=0.5",
+                  "Accept-Language": "${LangCode}-${LangCountryCode},${LangCode};q=0.5",
                   "Accept-Encoding": "gzip, deflate, br",
-                  "Referer": "https://www.amazon.jobs/${lang_code}/search",
+                  "Referer": "https://www.amazon.jobs/${LangCode}/search",
                   "Connection": "keep-alive"
                 }
               },
               "DBSettings": {
                 "db_name": "dynamodb",
                 "table_name": "${JobAgentStoreTable.TableName}",
-                "sqs_queue_url": "${JobQueueUrl}"
+                "sqs_queue_url": 'https://sqs.${AWS::Region}.${AWS::URLSuffix}/${AWS::AccountId}/${JobQueue.QueueName}'
               },
               "SendSettings": {
-                "topic_arn": "${JobSubscriberTopicArn}",
+                "topic_arn": "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}",
                 "subject": "Your Amazon Jobs For {{today}}",
                 "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
                 "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",
@@ -855,5 +883,5 @@ Resources:
                 "email_outro": "</body></html>",
                 "sms": "new_job: {{title}}, {{city}}\nurl: {{job_path}}\n"
               },
-              "source": "${JobAgentTriggerEvent.Name}"
+              "source": "${BaseName}-trigger-event"
               }
