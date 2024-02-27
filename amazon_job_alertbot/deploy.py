@@ -413,7 +413,7 @@ def main() -> None:
             },
             {
                 "ParameterKey": "YourEmail",
-                "ParameterValue": "jobagentnotifier@impulsecurve.com",
+                "ParameterValue": "youremail@example.com",
             },
             {
                 "ParameterKey": "TemplateFileName",
