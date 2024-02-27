@@ -338,7 +338,7 @@ def get_output_value(output: list[dict[str, str]], key_value: str) -> str | None
             return result["OutputValue"]
 
 
-def cleanup(folder_path) -> None:
+def cleanup(folder_path: str) -> None:
     """
     Deletes all zip files in the specified folder and its subfolders.
 
@@ -413,7 +413,7 @@ def main() -> None:
             },
             {
                 "ParameterKey": "YourEmail",
-                "ParameterValue": "youremail@example.com",
+                "ParameterValue": "jobagentnotifier@impulsecurve.com",
             },
             {
                 "ParameterKey": "TemplateFileName",
