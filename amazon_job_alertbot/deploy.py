@@ -1,31 +1,88 @@
+import argparse
+import contextlib
 import glob
 import hashlib
+import json
 import os
 import re
 import secrets
 import time
 import zipfile
+from datetime import datetime
 from typing import Any
+from urllib.parse import quote
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, WaiterError
 
 s3 = boto3.client("s3")
+s3r = boto3.resource("s3")
 cf = boto3.client("cloudformation")
 sts = boto3.client("sts")
+ec2 = boto3.client("ec2")
+session = boto3.session.Session()
+
+ParamDictType = dict[str, str | list[str | dict[str, str | None]] | bool | None]
 
 
-def get_templates(directory: str) -> tuple[str, str]:
+def parse_cli() -> argparse.Namespace | None:
     """
-    Retrieves a list of YAML templates from the specified directory.
-
-    Args:
-        directory: The directory path.
+    Parses command line arguments.
 
     Returns:
-        tuple with the child, root and statemachine template paths
+        argparse.Namespace: The parsed arguments.
     """
-    yamls = glob.glob(pathname=os.path.join(directory, "*.yaml"))
+    parser = argparse.ArgumentParser(
+        description="Deploy a child stack to the root stack."
+    )
+    parser.add_argument(
+        "-e",
+        "--email",
+        type=str,
+        help="Email address to send notifications to - REQUIRED.",
+        required=True,
+    )
+    parser.add_argument(
+        "-b",
+        "--basename",
+        type=str,
+        help="Base name of the stacks, defaults to: job-agent",
+        default="job-agent",
+    )
+    return parser.parse_args()
+
+
+def find_lost_dir(directory: str) -> str | None:
+    """
+    Finds the specified directory in the directory tree.
+
+    Args:
+        directory: The directory to search for.
+
+    Returns:
+        str: The lost directory's path.
+    """
+    return next(
+        os.path.join(root, directory)
+        for root, dirs, _ in os.walk(".")
+        if directory in dirs
+    )
+
+
+def get_templates(directory: str):
+    """
+    Retrieves the paths of YAML templates from the specified directory.
+
+    Args:
+        directory: The directory name to search for.
+
+    Returns:
+        A tuple with the paths of child, root, and statemachine templates, if found.
+    """
+    yamls: list[str] = glob.glob(os.path.join(directory, "*.yaml"))
+    if not yamls:
+        full_path = find_lost_dir(directory=directory)
+        yamls = glob.glob(pathname=os.path.join(full_path, "*.yaml"))
     for y in yamls:
         if "child" in y:
             child: str = y
@@ -33,21 +90,36 @@ def get_templates(directory: str) -> tuple[str, str]:
             root: str = y
         if "state_machine" in y:
             statemachine: str = y
+    if not (child or root or statemachine):
+        print(
+            "Did not locate at least one template locally; if the stacks already exist,"
+            "this won't be a problem. If they don't... game over man."
+        )
     return child, root, statemachine
 
 
-def gen_hash_suffix() -> str:
+def gen_hash_suffix(base_name: str) -> str:
     """
     Generates a random hash suffix of length 5.
+    If one has not been generated. Otherwise, returns it.
 
     Returns:
         str: The generated hash suffix.
 
-    Examples:
-        gen_hash_suffix()
     """
-
-    return secrets.token_hex(5)
+    for stack in cf.describe_stacks()["Stacks"]:
+        stackname = stack["StackName"]
+        if stackname.startswith(base_name) and (len(stackname.split("-")[-1]) == 12):
+            return (
+                get_output_value(
+                    output=cf.describe_stacks(StackName=stackname)["Stacks"][0].get(
+                        "Outputs"
+                    ),
+                    key_value="Suffix",
+                )
+                or stackname.split("-")[-1]
+            )
+    return secrets.token_hex(6)
 
 
 def set_stack_name(stack_name: str, suffix: str) -> str:
@@ -61,20 +133,64 @@ def set_stack_name(stack_name: str, suffix: str) -> str:
     Returns:
         str: The stack name with the random hash suffix.
     """
-    if stacks := cf.describe_stacks()["Stacks"]:
-        return next(
-            (
-                stack["StackName"]
-                for stack in stacks
-                if stack["StackName"].startswith(stack_name)
-                and not stack["StackStatus"].startswith("DELETE")
-            ),
-            f"{stack_name}-{suffix}",
+    return next(
+        (
+            stack["StackName"]
+            for stack in cf.describe_stacks()["Stacks"]
+            if stack_name in stack["StackName"]
+            and not stack.get("StackStatus").startswith("DELETE")
+        ),
+        f"{stack_name}-{suffix}",
+    )
+
+
+def get_url_suffix() -> str:
+    """
+    Returns the URL suffix for the current region.
+
+    Returns:
+        str: The URL suffix.
+    """
+    region: str = session.region_name
+    endpt: str = ec2.describe_regions(
+        Filters=[{"Name": "region-name", "Values": [region]}]
+    )["Regions"][0].get("Endpoint")
+    return endpt.replace(f"ec2.{region}.", "") or "amazonaws.com"
+
+
+def get_template_url(base_name: str, hash_suffix: str, bucket: str) -> str:
+    """
+    Returns the URL of the template file for CloudFormation stack creation.
+
+    Args:
+        base_name (str): base name for the file
+        hash_suffix (str): The suffix to be appended to the template file name.
+        bucket (str): The name of the S3 bucket where the template file is stored.
+
+    Returns:
+        str: The URL of the template file.
+    """
+    url: str = quote(
+        string=f"https://{bucket}.s3.{get_url_suffix()}/templates/{base_name}-{hash_suffix}.yaml",
+        safe=":/",
+    )
+    """
+    try:
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket,
+                "Key": f"templates/{base_name}-{hash_suffix}.yaml",
+            },
+            ExpiresIn=3600,
         )
-    return f"{stack_name}-{suffix}"
+    except ClientError as e:
+        print(e.response["Error"]["Message"])
+    """
+    return url
 
 
-def get_perm_user_arn(arn) -> str:
+def get_perm_user_arn(arn: str) -> str:
     """
     Retrieves the Amazon Resource Name (ARN) of the permission role associated with the provided assumed-role arn.
 
@@ -89,12 +205,9 @@ def get_perm_user_arn(arn) -> str:
     return iam_client.get_role(RoleName=role)["Role"]["Arn"]
 
 
-def get_user_arns(sts) -> str:
+def get_user_arns() -> str:
     """
     Retrieves the Amazon Resource Names (ARNs) of the user associated with the provided STS client.
-
-    Args:
-        sts: The STS client used to retrieve the caller identity.
 
     Returns:
         str: The ARNs of the user.
@@ -107,6 +220,21 @@ def get_user_arns(sts) -> str:
         perm_arn = get_perm_user_arn(arn=user_arn)
         return f"{root_arn},{perm_arn}"
     return f"{root_arn},{user_arn}"
+
+
+def stack_exists(stack_name: str) -> bool:
+    """
+    Checks if a parent stack with the specified name exists.
+
+    Args:
+        stack_name: The name of the parent stack.
+
+    Returns:
+        bool: True if the parent stack exists, False otherwise.
+    """
+    if stacks := cf.describe_stacks().get("Stacks"):
+        return any(stack_name in stack.get("StackName") for stack in stacks)
+    return False
 
 
 def read_template(template_path: str) -> str:
@@ -124,7 +252,7 @@ def read_template(template_path: str) -> str:
         return file.read()
 
 
-def await_response(stack_name: str) -> None | Any:
+def await_response(stack_name: str, update=False) -> None | Any:
     """
     Waits for the stack creation to complete and handles the response.
 
@@ -132,56 +260,29 @@ def await_response(stack_name: str) -> None | Any:
         stack_name (str): The name of the stack.
 
     Returns:
-        None
+    None | Any (stack output)
 
     Raises:
         ValueError: If the stack creation fails.
     """
     time.sleep(10)
-    seen_events = []
-    status = ""
-    while True:
-        stack_details = cf.describe_stacks(StackName=stack_name)["Stacks"][0]
-        response = stack_details.get("StackStatus")
-        events = list(
-            reversed(cf.describe_stack_events(StackName=stack_name)["StackEvents"])
-        )
-        for event in events:
-            event_id = event.get("EventId")
-            if (
-                event_id not in seen_events
-                and event.get("ResourceStatusReason")
-                and event.get("ResourceStatus")
-                in ["CREATE_COMPLETE", "UPDATE_COMPLETE"]
-            ):
-                seen_events.append(event_id)
-                print(
-                    f"""Update:
-                    \tStack: {event.get('StackName')}  |  Time: {event.get('Timestamp').strftime('%d-%m-%y %H:%M:%S')}
-                    \tLogicalId: {event.get('LogicalResourceId')}  |  Resource Type: {event.get('ResourceType').split('::')[2]}
-                    \tResourceStatusReason: {event.get('ResourceStatusReason')}\n
-                    \t STATUS: {event.get("ResourceStatus")}"""
-                )
-        if "PROGRESS" in response and "ROLLBACK" not in response:
-            if response != status:
-                status = response
-                print(f"Stack status: {status}")
-            time.sleep(5)
-        elif "ROLLBACK" in response or "FAILED" in response:
-            raise ValueError(
-                f"Stack creation failed: {stack_details.get('StackStatusReason')} for {stack_details.get('LogicalResourceId')}"
-            )
-        elif response.endswith("COMPLETE"):
-            print("Stack creation complete.")
-            break
-        else:
-            break
-    return stack_details.get("Outputs")
+    waiter_kwargs = {
+        "StackName": stack_name,
+        "WaiterConfig": {"Delay": 5, "MaxAttempts": 180},
+    }
+    waiter = "stack_update_complete" if update else "stack_create_complete"
+    try:
+        cf.get_waiter(waiter).wait(**waiter_kwargs)
+        return cf.describe_stacks(StackName=stack_name)["Stacks"][0].get("Outputs")
+    except WaiterError as e:
+        val = "update" if update else "creation"
+        raise ValueError(f"Stack {val} failed: {e}") from e
 
 
-def deploy_cloud(cf_params) -> None | list[dict[str, str]]:
+def deploy_cloud(cf_params: ParamDictType) -> None | list[dict[str, str]]:
     """
-    Deploys a CloudFormation stack using the specified parameters. If it already exists, updates the stack.
+    Deploys a CloudFormation stack using the specified parameters. If it already
+    exists, updates the stack.
 
     Args:
         cf_params: The parameters for creating the stack.
@@ -204,7 +305,88 @@ def deploy_cloud(cf_params) -> None | list[dict[str, str]]:
         return update_stacks(cf_params=cf_params)
 
 
-def update_stacks(cf_params) -> None | list[dict[str, str]]:
+def set_update_params(params: ParamDictType, stack: dict[str, Any]) -> None:
+    """
+    Set update parameters for the stack.
+
+    Args:
+        params: A dictionary containing the parameters for the stack update.
+        stack: A dictionary representing the stack.
+
+    Returns:
+        None
+    """
+    child_exists = get_output_value(output=stack["Outputs"], key_value="ChildStackId")
+    bucket_name: str | None = get_output_value(
+        output=stack["Outputs"], key_value="JobAgentS3Name"
+    )
+    for param in params["Parameters"]:
+        if param["ParameterKey"] == "HashSuffix":
+            suffix = param["ParameterValue"]
+        if param["ParameterKey"] not in [
+            "EventSchedule",
+            "LangCode",
+            "LangCountryCode",
+            "YourEmail",
+            "ChildStackBody",
+            "TemplateUrl",
+        ] and param.get("ParameterValue"):
+            param.pop("ParameterValue")
+            param["UsePreviousValue"] = True
+
+        if param["ParameterKey"] == "TemplateUrl" and not child_exists:
+            param["ParameterValue"] = get_template_url(
+                base_name="cf-child", hash_suffix=suffix, bucket=bucket_name
+            )
+            print(param["ParameterValue"])
+
+    pop_if_present(params=params, key="EnableTerminationProtection")
+
+    params["DisableRollback"] = False
+    params["Parameters"].append(
+        {"ParameterKey": "ChildEnabled", "ParameterValue": "true"}
+    )
+
+    if not child_exists:
+        params["Parameters"].append(
+            {"ParameterKey": "SelfArn", "ParameterValue": stack["StackId"]}
+        )
+
+    if child_exists:
+        pop_if_present(params=params, key="TemplateBody")
+        params["TemplateURL"] = get_template_url(
+            base_name="cf-root", hash_suffix=suffix, bucket=bucket_name
+        )
+        params["RoleARN"] = get_output_value(
+            output=stack["Outputs"],
+            key_value="DeploymentRoleArn",
+        )
+    return params
+
+
+def pop_if_present(params: ParamDictType, key: str) -> None:
+    """
+    Removes the specified key from the parameters if it exists.
+
+    Args:
+        params: The parameters dictionary.
+        key: The key to remove.
+
+    Returns:
+        None
+    """
+    if key in params.keys():
+        params.pop(key)
+        return
+    for param in params.get("Parameters"):
+        if param.get("ParameterKey") == key:
+            params["Parameters"].remove(param)
+            break
+
+
+def update_stacks(
+    cf_params: ParamDictType,
+) -> None | list[dict[str, str]]:
     """
     Updates the CloudFormation stack with the given parameters.
 
@@ -217,31 +399,41 @@ def update_stacks(cf_params) -> None | list[dict[str, str]]:
     Raises:
         None
     """
-    for param in cf_params["Parameters"]:
-        if (
-            param["ParameterKey"]
-            in ["BaseName", "BaseNameTitleCase", "TagKey", "UserArns"]
-            and param["ParameterValue"]
-        ):
-            param.pop("ParameterValue")
-            param["UsePreviousValue"] = True
-
-    cf_params.pop("EnableTerminationProtection")
-    cf_params["DisableRollback"] = False
-    new_key = {"ParameterKey": "ChildEnabled", "ParameterValue": "true"}
-    cf_params["Parameters"].append(new_key)
-    deployment_arn = get_output_value(
-        output=cf.describe_stacks(StackName=cf_params["StackName"])["Stacks"][0][
-            "Outputs"
-        ],
-        key_value="DeploymentRoleArn",
-    )
-    cf_params["RoleARN"] = deployment_arn
+    stack = cf.describe_stacks(StackName=cf_params["StackName"])["Stacks"][0]
+    set_update_params(params=cf_params, stack=stack)
     cf.update_stack(**cf_params)
-    return await_response(stack_name=cf_params["StackName"])
+    return await_response(stack_name=cf_params["StackName"], update=True)
 
 
-def zip_directory(folder_path, output_filename) -> None:
+def push_objects(bucket: str, files: list[str], destinations: list[str]) -> None:
+    """
+    Pushes the specified files to the specified S3 destinations.
+
+    Args:
+        bucket: The name of the S3 bucket.
+        files: The list of files to be pushed.
+        destinations: The list of S3 destinations.
+
+    Returns:
+        None
+    """
+    path = "lambdas"
+    try:
+        lambda_folders = os.listdir(path=path)
+    except FileNotFoundError:
+        path = find_lost_dir(directory=path)
+        lambda_folders = os.listdir(path=path)
+    for lambda_folder in lambda_folders:
+        lambda_path = os.path.join(path, lambda_folder)
+        zip_file: str = f"{lambda_folder}.zip"
+        zip_directory(folder_path=lambda_path, output_filename=zip_file)
+        check_and_upload_to_s3(
+            bucket=bucket, file_path=zip_file, s3_path=f"{path}/{zip_file}"
+        )
+    check_and_upload_to_s3(bucket=bucket, file_path=files, s3_path=destinations)
+
+
+def zip_directory(folder_path: str, output_filename: str) -> None:
     """
     Zips the contents of a directory into a zip file.
 
@@ -264,6 +456,36 @@ def zip_directory(folder_path, output_filename) -> None:
                 )
 
 
+def bucket_empty(bucket) -> bool:
+    """
+    Checks if the S3 bucket is empty.
+
+    Args:
+        bucket: The Bucket object.
+    Returns:
+        bool: True if the bucket is empty, False otherwise.
+    """
+    return not bucket.objects.all()
+
+
+def object_exists(bucket, s3_path):
+    """
+    Checks if an object exists in the S3 bucket.
+
+    Args:
+        bucket: The Bucket object.
+        s3_path: The path to the object.
+
+    Returns:
+        bool: True if the object exists, False otherwise.
+    """
+
+    try:
+        return bool(bucket.Object(s3_path).load())
+    except ClientError:
+        return False
+
+
 def check_and_upload_to_s3(
     bucket: str, file_path: str | list[str], s3_path: str | list[str]
 ) -> None:
@@ -282,10 +504,25 @@ def check_and_upload_to_s3(
         file_path = [file_path]
     if isinstance(s3_path, str):
         s3_path = [s3_path]
-    for file, s3 in zip(file_path, s3_path):
-        s3object = s3.Object(bucket, s3)
-        if not s3object.load() or check_diff(file_path=file, s3object=s3object):
-            upload_to_s3(bucket=bucket, file_path=file, s3_path=s3)
+    s3bucket = s3r.Bucket(bucket)
+    for file, s3_path in zip(file_path, s3_path):
+        try:
+            if bucket_empty(bucket=s3bucket):
+                upload_to_s3(bucket=bucket, file_path=file, s3_path=s3_path)
+                continue
+            if object_exists(bucket=s3bucket, s3_path=s3_path):
+                s3object = s3bucket.Object(s3_path)
+                if check_diff(file_path=file, s3object=s3object):
+                    upload_to_s3(bucket=bucket, file_path=file, s3_path=s3_path)
+                    continue
+                continue
+            upload_to_s3(bucket=bucket, file_path=file, s3_path=s3_path)
+            continue
+        except Exception:
+            try:
+                upload_to_s3(bucket=bucket, file_path=file, s3_path=s3_path)
+            except Exception as e:
+                print(f"Error uploading {file} to S3: {e}")
 
 
 def check_diff(file_path: str, s3object: str) -> bool:
@@ -299,15 +536,31 @@ def check_diff(file_path: str, s3object: str) -> bool:
     Returns:
         bool: True if the hash of the local file is different from the hash of the S3 object, False otherwise.
     """
-    s3object_hash = s3object.e_tag.strip('"')
+    try:
+        with contextlib.suppress(ClientError):
+            s3object_hash = s3object.e_tag.strip('"')
+            return get_hash(file_path=file_path) != s3object_hash
+    except Exception:
+        return False
+
+
+def get_hash(file_path: str) -> str:
+    """
+    Calculates the MD5 hash of a file.
+
+    Args:
+        file_path (str): The path to the file.
+
+    Returns:
+        str: The MD5 hash of the file.
+
+    """
     with open(file=file_path, mode="rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
-            file_hash = hashlib.md5(string=chunk).hexdigest()
-            if file_hash != s3object_hash:
-                return True
+            return hashlib.md5(string=chunk).hexdigest()
 
 
-def upload_to_s3(bucket, file_path, s3_path) -> None:
+def upload_to_s3(bucket: str, file_path: str, s3_path: str) -> None:
     """
     Uploads a file to an S3 bucket.
 
@@ -319,7 +572,19 @@ def upload_to_s3(bucket, file_path, s3_path) -> None:
     Returns:
         None
     """
-    s3.put_object(Body=file_path, Bucket=bucket, Key=s3_path)
+    waiter = s3.get_waiter("object_exists")
+    now = datetime.now()
+    s3.put_object(
+        Body=file_path,
+        Bucket=bucket,
+        Key=s3_path,
+        ContentType="application/zip"
+        if file_path.endswith(".zip") or "lambdas" in file_path
+        else "text/plain",
+    )
+    waiter.wait(
+        Bucket=bucket, Key=s3_path, IfModifiedSince=now, WaiterConfig={"Delay": 2}
+    )
 
 
 def get_output_value(output: list[dict[str, str]], key_value: str) -> str | None:
@@ -333,9 +598,50 @@ def get_output_value(output: list[dict[str, str]], key_value: str) -> str | None
     Returns:
         str | None: The value associated with the given key, or None if the key is not found.
     """
-    for result in output:
-        if result["OutputKey"] == key_value:
-            return result["OutputValue"]
+    if output:
+        for result in output:
+            if result["OutputKey"] == key_value:
+                return result["OutputValue"]
+
+
+def update_deployment_permissions(
+    deployment_arn: str, bucket_name: str, stack_arn: str
+) -> None:
+    """
+    Updates the permissions for the specified deployment.
+
+    Args:
+        deployment_arn (str): The ARN of the deployment.
+        bucket_name (str): The name of the bucket.
+        stack_arn (str): The ARN of the stack.
+
+    Returns:
+        None
+    """
+    with contextlib.suppress(ClientError):
+        iam = boto3.client("iam")
+        role_base = deployment_arn.split("/")[-1].split("-")[-2]
+        policy_base = re.match(
+            pattern=r"^([a-zA-Z0-9]+)CFDeploymentRole", string=role_base
+        )
+        response = iam.get_role_policy(
+            RoleName=deployment_arn.split("/")[-1],
+            PolicyName=f"{policy_base}DeploymentPolicy",
+        )
+        policy_document = json.loads(response["Policy"]["PolicyDocument"])
+        policy_document["Statement"][1]["Resource"].append(deployment_arn)
+        iam.put_role_policy(
+            RoleName=deployment_arn.split("/")[-1],
+            PolicyName=f"{policy_base}DeploymentPolicy",
+            PolicyDocument=json.dumps(policy_document),
+        )
+
+        response = s3.get_bucket_policy(Bucket=bucket_name)
+        statements = json.loads(response)["Policy"]["Statement"]
+        cf_aws_principal = statements[0]["Principal"]["AWS"]
+        cf_aws_principal.append(stack_arn)
+        cf_aws_principal.append(deployment_arn)
+        print(f"Updated deployment permissions for {deployment_arn}, {stack_arn}")
 
 
 def cleanup(folder_path: str) -> None:
@@ -348,11 +654,9 @@ def cleanup(folder_path: str) -> None:
     Returns:
         None
 
-    Examples:
-        cleanup("/path/to/folder")
     """
     for file_path in glob.glob(pathname=f"{folder_path}/**/*.zip", recursive=True):
-        os.remove(file_path)
+        os.remove(path=file_path)
 
 
 def main() -> None:
@@ -365,27 +669,32 @@ def main() -> None:
     Examples:
         main()
     """
-
+    args: dict[str, Any] = vars(parse_cli())
     child_template, root_template, states_template = get_templates(
-        directory="./templates"
+        directory="templates"
     )
-
     if not child_template or not states_template:
         raise ValueError("Couldn't locate child and statemachine templates.")
 
-    child_filename, root_filename, states_filename = (
-        os.path.basename(child_template),
-        os.path.basename(root_template),
-        os.path.basename(states_template),
+    base_name: str = args.get("basename", "superdelicious")
+    components: list[str] = base_name.split("-")
+    titled = [item.title() for item in components]
+    base_name_title: str = "".join(titled)
+    suffix: str = gen_hash_suffix(base_name=base_name)
+    root_stack_name: str = set_stack_name(
+        stack_name=f"{base_name}-root-stack", suffix=suffix
     )
-    # TODO: add argparse for variables
-    base_name = "job-agent"
-    base_name_title = "JobAgent"
-    suffix = gen_hash_suffix()
-    root_stack_name = set_stack_name(stack_name="job-agent-root-stack", suffix=suffix)
-    user_arns = get_user_arns(sts=sts)
+    user_arns: str = get_user_arns()
 
-    root_params = {
+    files: list[str] = [child_template, states_template, root_template]
+    prefix = "templates/"
+    destinations = [
+        f"{prefix}cf-child-{suffix}.yaml",
+        f"{prefix}statemachine-{suffix}.yaml",
+        f"{prefix}cf-root-{suffix}.yaml",
+    ]
+
+    root_params: ParamDictType = {
         "StackName": root_stack_name,
         "TemplateBody": read_template(template_path=root_template),
         "Capabilities": ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"],
@@ -413,11 +722,11 @@ def main() -> None:
             },
             {
                 "ParameterKey": "YourEmail",
-                "ParameterValue": "jobagentnotifier@impulsecurve.com",
+                "ParameterValue": args.get("email"),
             },
             {
                 "ParameterKey": "TemplateFileName",
-                "ParameterValue": child_filename,
+                "ParameterValue": destinations[0],
             },
             {
                 "ParameterKey": "BaseName",
@@ -427,30 +736,52 @@ def main() -> None:
                 "ParameterKey": "BaseNameTitleCase",
                 "ParameterValue": base_name_title,
             },
+            {
+                "ParameterKey": "TemplateUrl",
+                "ParameterValue": "none",
+            },
         ],
-        "Tags": [{"Key": "JobAlertsAgent", "Value": f"{root_stack_name}-root"}],
+        "Tags": [
+            {"Key": "JobAlertsAgent", "Value": f"{root_stack_name}"},
+            {"Key": "StackName", "Value": f"{base_name}-root-stack"},
+        ],
         "DisableRollback": True,
-        "EnableTerminationProtection": True,
+        # "EnableTerminationProtection": True,
     }
-    output = deploy_cloud(cf_params=root_params)
-    bucket = get_output_value(output=output, key_value="JobAgentS3Name")
-
-    for lambda_folder in os.listdir(path="lambdas"):
-        lambda_path = os.path.join("lambdas", lambda_folder)
-        zip_file: str = f"{lambda_folder}.zip"
-        zip_directory(folder_path=lambda_path, output_filename=zip_file)
-        check_and_upload_to_s3(
-            bucket=bucket, file_path=zip_file, s3_path=f"lambdas/{zip_file}"
+    if stack_exists(stack_name=root_stack_name):
+        bucket: str | None = get_output_value(
+            output=cf.describe_stacks(StackName=root_stack_name)
+            .get("Stacks")[0]
+            .get("Outputs"),
+            key_value="JobAgentS3Name",
         )
+        push_objects(bucket=bucket, files=files, destinations=destinations)
+        output = update_stacks(cf_params=root_params)
+    else:
+        output: list[dict[str, str]] | None = deploy_cloud(cf_params=root_params)
+        if (
+            cf.describe_stacks(StackName=root_stack_name)["Stacks"][0].get(
+                "StackStatus"
+            )
+            != "CREATE_COMPLETE"
+        ):
+            raise ValueError("Stack creation failed.")
+        bucket: str | None = get_output_value(
+            output=cf.describe_stacks(StackName=root_stack_name)["Stacks"][0][
+                "Outputs"
+            ],
+            key_value="JobAgentS3Name",
+        )
+        push_objects(bucket=bucket, files=files, destinations=destinations)
 
-    files = [child_template, states_template, root_template]
-    filenames = [child_filename, states_filename, root_filename]
-    destinations = [f"templates/{filename}" for filename in filenames]
-    check_and_upload_to_s3(bucket=bucket, file_path=files, s3_path=destinations)
-    time.sleep(10)
-    if get_output_value(output=output, key_value="ChildEnabled") == "false":
-        update_stacks(cf_params=root_params)
-
+    if stack_params := cf.describe_stacks(StackName=root_stack_name)["Stacks"][0].get(
+        "Parameters"
+    ):
+        for param in stack_params:
+            if param.get("ParameterKey") == "ChildEnabled":
+                if param.get("ParameterValue") == "true":
+                    break
+                update_stacks(cf_params=root_params)
     cleanup(folder_path=os.listdir(path="."))
 
 

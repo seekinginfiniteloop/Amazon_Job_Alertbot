@@ -4,7 +4,7 @@ Description: |
 Parameters:
   YourEmail:
     Type: String
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    AllowedPattern: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
     Description: Your email address for the SNS topic
     NoEcho: true
   BaseName:
@@ -31,6 +31,12 @@ Parameters:
   BucketArn:
     Type: String
     Description: S3 bucket ARN
+  HashSuffix:
+    Type: String
+    Description: Hash suffix for statemachine
+  RootArn:
+    Type: String
+    Description: Root ARN for stack
 Resources:
   JobAgentLogGroup:
     Type: AWS::Logs::LogGroup
@@ -65,15 +71,28 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudtrail/:*"
                   - !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:DeleteObject
                   - s3:GetBucketAcl
-                  - s3:GetBucketPolicy
-                  - s3:PutBucketAcl
-                Resource: !Ref "BucketArn"
+                Resource:
+                  - !Ref "BucketArn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "${BucketArn}/AWSLogs/*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-log-role"
@@ -84,7 +103,7 @@ Resources:
       CloudWatchLogsLogGroupArn: !GetAtt "JobAgentLogGroup.Arn"
       CloudWatchLogsRoleArn: !GetAtt "JobAgentCloudTrailRole.Arn"
       S3BucketName: !Ref "BucketName"
-      IncludeGlobalServiceEvents: false
+      IncludeGlobalServiceEvents: true
       IsLogging: true
       IsMultiRegionTrail: false
       EnableLogFileValidation: true
@@ -116,6 +135,9 @@ Resources:
                   - xray:PutTelemetryRecords
                 Resource:
                   - !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-log-role"
@@ -186,7 +208,7 @@ Resources:
         SSEEnabled: false
       Tags:
         - Key: !Ref "TagKey"
-          Value: job_db_store
+          Value: !Sub "${BaseName}-job-db-store"
   JobQueue:
     Type: AWS::SQS::Queue
     UpdateReplacePolicy: Delete
@@ -214,9 +236,11 @@ Resources:
             Principal:
               Service:
                 - !Sub "states.${AWS::URLSuffix}"
+              AWS:
+                - !Ref "JobAgentStateMachine"
             Condition:
-              ArnEquals:
-                aws:SourceArn: !Ref "JobAgentStateMachine"
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
           - Effect: Allow
             Action:
               - sqs.ReceiveMessage
@@ -228,8 +252,9 @@ Resources:
               Service:
                 - !Sub "lambda.${AWS::URLSuffix}"
             Condition:
-              ArnEquals:
-                aws:SourceArn: !GetAtt "JobAgentSenderFunction.Arn"
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}:
+                  - !Sub "${BaseName}*"
         Tags:
           - Key: !Ref "TagKey"
             Value: !Sub "${BaseName}-queue-policy"
@@ -247,9 +272,63 @@ Resources:
   JobSubscriberTopicSubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      TopicArn: !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}"
+      TopicArn: !Ref "JobSubscriberTopic"
       Protocol: email
       Endpoint: !Ref "YourEmail"
+  JobSubscriberTopicInlinePolicy:
+    Type: AWS::SNS::TopicInlinePolicy
+    Properties:
+      TopicArn: !Ref "JobSubscriberTopic"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Action:
+              - sns:Publish
+              - sns:ListTopics
+              - sns:GetSubscriptionAttributes
+              - sns:ListTagsForResource
+              - sns:GetTopicAttributes
+              - sns:Subscribe
+              - sns:Unsubscribe
+            Resource:
+              - !Ref "JobSubscriberTopic"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+          - Effect: Allow
+            Action:
+              - sns:CreateTopic
+              - sns:DeleteTopic
+              - sns:SetTopicAttributes
+              - sns:Subscribe
+              - sns:Unsubscribe
+              - sns:Get*
+              - sns:List*
+              - sns:Tag*
+              - sns:Untag*
+              - sns:Set*
+              - sns:ConfirmSubscription
+              - sns:AddPermission
+              - sns:RemovePermission
+              - sns:OptInPhoneNumber
+              - sns:CreateSMSSandboxPhoneNumber
+              - sns:DeleteSMSSandboxPhoneNumber
+              - sns:VerifySMSSandboxPhoneNumber
+            Resource:
+              - !Ref "JobSubscriberTopic"
+            Principal:
+              Service:
+                - !Sub "cloudformation.${AWS::URLSuffix}"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+        Tags:
+          - Key: !Ref "TagKey"
+            Value: !Sub "${BaseName}-topic-policy"
   JobAgentTriggerEventRole:
     Type: AWS::IAM::Role
     Properties:
@@ -273,6 +352,9 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
                   - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${BaseNameTitleCase}-StateMachine:*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
@@ -280,6 +362,9 @@ Resources:
                   - xray:PutTelemetryRecords
                   - xray:PutTraceSegments
                 Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-trigger-event-role"
@@ -292,7 +377,7 @@ Resources:
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "BucketName"
-        S3Key: var_replacer.zip
+        S3Key: lambdas/var_replacer.zip
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-var-replacer"
@@ -305,7 +390,7 @@ Resources:
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "BucketName"
-        S3Key: job_scraper.zip
+        S3Key: lambdas/job_scraper.zip
       Layers:
         - arn:aws:serverlessrepo:us-east-1:554326023307:applications/Requests
       Tags:
@@ -335,6 +420,9 @@ Resources:
                   - xray:PutTraceSegments
                   - xray:PutTelemetryRecords
                 Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - dynamodb:Scan
@@ -342,6 +430,9 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                 Resource: !GetAtt "JobAgentStoreTable.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-log-role"
@@ -354,7 +445,7 @@ Resources:
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "BucketName"
-        S3Key: job_store.zip
+        S3Key: lambdas/job_store.zip
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-job-store"
@@ -380,6 +471,9 @@ Resources:
                   - xray:PutTraceSegments
                   - xray:PutTelemetryRecords
                 Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - sqs:ReceiveMessage
@@ -387,10 +481,16 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:PurgeQueue
                 Resource: !GetAtt "JobQueue.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - sns:Publish
                 Resource: !Ref "JobSubscriberTopic"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-log-role"
@@ -403,7 +503,7 @@ Resources:
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "BucketName"
-        S3Key: job_sender.zip
+        S3Key: lambdas/job_sender.zip
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-job-sender"
@@ -416,7 +516,7 @@ Resources:
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "BucketName"
-        S3Key: error_handler.zip
+        S3Key: lambdas/error_handler.zip
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-error-handler"
@@ -443,6 +543,9 @@ Resources:
                 Action:
                   - states:StartExecution
                 Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - lambda:InvokeFunction
@@ -452,19 +555,26 @@ Resources:
                   - !GetAtt "JobAgentSenderFunction.Arn"
                   - !GetAtt "ErrorHandlerFunction.Arn"
                   - !GetAtt "VarReplacerFunction.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
                 Resource:
                   - !GetAtt "JobQueue.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - logs:PutLogEvents
                   - logs:CreateLogStream
-                  - xray:PutTraceSegments
-                  - xray:PutTelemetryRecords
                 Resource:
                   - !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -473,17 +583,28 @@ Resources:
                   - s3:GetObjectVersionTagging
                   - s3:GetBucketAcl
                 Resource: !Ref "BucketArn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
   JobAgentStateMachine:
     Type: AWS::StepFunctions::StateMachine
-    DependsOn:
-      - JobSubscriberTopic
-      - JobSubscriberTopicSubscription
+    DependsOn: JobSubscriberTopicSubscription
     Properties:
       StateMachineName: !Sub "${BaseNameTitleCase}-StateMachine"
       RoleArn: !GetAtt "JobAgentStateMachineExecutionRole.Arn"
       DefinitionS3Location:
         Bucket: !Ref "BucketName"
-        Key: !Sub "${BaseName}-state-machine-definition.yaml"
+        Key: !Sub "templates/statemachine-${HashSuffix}.yaml"
       DefinitionSubstitutions:
         JobAgentScraperFunctionArn: !GetAtt "JobAgentScraperFunction.Arn"
         JobAgentScraperFunctionName: !Ref "JobAgentScraperFunction"
@@ -497,7 +618,9 @@ Resources:
         ErrorHandlerFunctionArn: !GetAtt "ErrorHandlerFunction.Arn"
         VarReplacerFunctionName: !Ref "VarReplacerFunction"
         VarReplacerFunctionArn: !GetAtt "VarReplacerFunction.Arn"
-        JobQueueUrl: !Sub "https://sqs.${AWS::URLSuffix}/${AWS::AccountId}/${JobQueue.QueueName}"
+        JobQueueUrl: !Ref "JobQueue"
+        SNSJobSubscriberTopicArn: !Ref "JobSubscriberTopic"
+        SNSJobSubscriberTopicName: !GetAtt "JobSubscriberTopic.TopicName"
       StateMachineType: STANDARD
       LoggingConfiguration:
         Destinations:
@@ -507,7 +630,7 @@ Resources:
         Level: ALL
       Tags:
         - Key: !Ref "TagKey"
-          Value: !Sub "${BaseNameTitleCase}-StateMachine"
+          Value: !Sub "${BaseName}-StateMachine"
   JobAgentTriggerEvent:
     Type: AWS::Events::Rule
     DependsOn:
@@ -576,10 +699,10 @@ Resources:
                 "DBSettings": {
                   "db_name": "dynamodb",
                   "table_name": "${JobAgentStoreTable}",
-                  "sqs_queue_url": "https://sqs.${AWS::URLSuffix}/${AWS::AccountId}/${JobQueue.QueueName}"
+                  "sqs_queue_url": "${JobQueue}"
                 },
                 "SendSettings": {
-                  "topic_arn": "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${JobSubscriberTopic.TopicName}",
+                  "topic_arn": ${JobSubscriberTopic}",
                   "subject": "Your Amazon Jobs For {{today}}",
                   "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
                   "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",

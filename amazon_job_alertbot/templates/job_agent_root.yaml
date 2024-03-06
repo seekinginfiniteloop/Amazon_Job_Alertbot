@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: |
-  Deploys necessary s3 bucket and CF deployment role for broader job agent deployment. This allows templates and functions to be uploaded by the deployment script in advance of the main template's execution.
+  Deploys necessary s3 bucket and CF deployment role for broader job agent deployment. This allows templates and functions to be uploaded by the deployment script in advance of the main template execution.
 Parameters:
   YourEmail:
     Type: String
@@ -52,21 +52,34 @@ Parameters:
     Default: "false"
   TemplateFileName:
     Type: String
-    AllowedPattern: (\w*.yaml)
     Description: Name of the template file to be deployed in the child stack
-    Default: job_agent_child.yaml
+    Default: cf-child-
+  TemplateUrl:
+    Type: String
+    Description: URL of the template file to be deployed in the child stack
+    Default: none
+    NoEcho: true
+  SelfArn:
+    Type: String
+    Description: ARN of the main stack once created
+    Default: none
 Conditions:
   CreateChildStack: !Equals
     - !Ref "ChildEnabled"
     - "true"
+  SelfArnNotNone: !Not
+    - !Equals
+      - !Ref "SelfArn"
+      - none
 Resources:
   JobAgentStack:
     Type: AWS::CloudFormation::Stack
     Condition: CreateChildStack
+    DependsOn: JobAgentBucketPolicy
     UpdateReplacePolicy: Delete
     DeletionPolicy: Delete
     Properties:
-      TemplateURL: !Sub "https://${JobAgentBucket}.s3.${AWS::URLSuffix}/${TemplateFileName}"
+      TemplateURL: !Ref "TemplateUrl"
       Parameters:
         BaseName: !Ref "BaseName"
         BaseNameTitleCase: !Ref "BaseNameTitleCase"
@@ -77,6 +90,8 @@ Resources:
         TagKey: !Ref "TagKey"
         BucketName: !Ref "JobAgentBucket"
         BucketArn: !GetAtt "JobAgentBucket.Arn"
+        HashSuffix: !Ref "HashSuffix"
+        RootArn: !Ref "SelfArn"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-child-stack"
@@ -96,7 +111,7 @@ Resources:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-cf-deployment-role"
       Policies:
-        - PolicyName: JobAgentCFDeploymentPolicy
+        - PolicyName: !Sub "${BaseNameTitleCase}DeploymentPolicy"
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -106,6 +121,21 @@ Resources:
                   - sts:*
                 Resource:
                   - "*"
+                Condition:
+                  ForAnyValue:StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+                    aws:ResourceTag/StackName: !Sub "${BaseName}"
+              - Effect: Allow
+                Action:
+                  - tag:TagResource
+                  - tag:UntagResource
+                Resource:
+                  - "*"
+                Condition:
+                  ForAllValues:StringEquals:
+                    aws:TagKeys:
+                      - !Ref "TagKey"
+                      - StackName
               - Effect: Allow
                 Action:
                   - iam:CreateRole
@@ -115,8 +145,12 @@ Resources:
                   - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
                   - iam:PutRolePolicy
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:PutRolePolicy
                   - iam:CreatePolicy
                   - iam:CreatePolicyVersion
+                  - iam:CreateServiceLinkedRole
+                  - iam:DeleteServiceBasedRole
                   - iam:DeletePolicy
                   - iam:CreateGroup
                   - iam:DeleteGroup
@@ -132,9 +166,12 @@ Resources:
                   - iam:UntagRole
                   - iam:UntagPolicy
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*${BaseNameTitleCase}*"
                   - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BaseNameTitleCase}*"
                   - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:group/${BaseNameTitleCase}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -146,6 +183,9 @@ Resources:
                   - logs:Untag*
                 Resource:
                   - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - events:PutRule
@@ -156,8 +196,12 @@ Resources:
                   - events:List*
                   - events:Tag*
                   - events:UnTag*
+                  - organizations:ListAWSServiceAccessForOrganization
                 Resource:
                   - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${BaseName}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - states:CreateStateMachine
@@ -168,11 +212,16 @@ Resources:
                   - states:UntagResource
                   - states:Describe*
                   - states:List*
+                  - organizations:ListAWSServiceAccessForOrganization
                 Resource:
                   - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - lambda:*
+                  - organizations:ListAWSServiceAccessForOrganization
                 Resource:
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${BaseName}*"
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:layer:*"
@@ -191,6 +240,9 @@ Resources:
                   - sqs:UntagQueue
                 Resource:
                   - !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - sns:CreateTopic
@@ -208,6 +260,9 @@ Resources:
                   - sns:RemovePermission
                 Resource:
                   - !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - dynamodb:CreateTable
@@ -219,13 +274,13 @@ Resources:
                   - dynamodb:Untag*
                 Resource:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${BaseName}*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
-                  - s3:PutObject
-                  - s3:DeleteObject
                   - s3:DeleteBucket
                   - s3:DeleteBucketPolicy
-                  - s3:DeleteObject
                   - s3:PutBucketTagging
                   - s3:PutEncryptionConfiguration
                   - s3:PutLifecycleConfiguration
@@ -234,6 +289,7 @@ Resources:
                   - s3:PutBucketLogging
                   - s3:PutBucketAcl
                   - s3:PutBucketVersioning
+                  - s3:*Object
                   - s3:List*
                   - s3:Get*
                   - s3:Tag*
@@ -241,12 +297,20 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}"
                   - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
               - Effect: Allow
                 Action:
                   - xray:PutTelemetryRecords
                   - xray:PutTraceSegments
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
                 Resource:
                   - "*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
   JobAgentBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Delete
@@ -255,6 +319,25 @@ Resources:
       BucketName: !Sub "${BaseName}-bucket-${HashSuffix}"
       VersioningConfiguration:
         Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+      LoggingConfiguration:
+        LogFilePrefix: s3logs/
+      LifecycleConfiguration:
+        Rules:
+          - Status: Enabled
+            Transitions:
+              - StorageClass: INTELLIGENT_TIERING
+                TransitionInDays: 0
+      IntelligentTieringConfigurations:
+        - Id: job-agent-tiering
+          Status: Enabled
+          Tierings:
+            - AccessTier: ARCHIVE_ACCESS
+              Days: 250
+            - AccessTier: DEEP_ARCHIVE_ACCESS
+              Days: 400
       Tags:
         - Key: !Ref "TagKey"
           Value: !Sub "${BaseName}-bucket"
@@ -279,21 +362,12 @@ Resources:
             Action:
               - s3:Get*
               - s3:List*
+              - s3:*Object
               - s3:DeleteBucket
-              - s3:PutObjectTagging
-              - s3:PutObjectVersionTagging
               - s3:PutBucketTagging
-              - s3:DeleteObjectTagging
-              - s3:DeleteObjectVersionTagging
               - s3:DeleteBucketPolicy
               - s3:PutBucketPolicy
-              - s3:PutObjectAcl
-              - s3:PutObjectVersionAcl
-              - s3:RestoreObject
-              - s3:ReplicateObject
               - s3:ReplicateDelete
-              - s3:PutObjectRetention
-              - s3:PutObject
               - s3:PutMetricsConfiguration
               - s3:PutLifecycleConfiguration
               - s3:PutIntelligentTieringConfiguration
@@ -306,43 +380,57 @@ Resources:
               - s3:PutBucketCORS
               - s3:PutAnalyticsConfiguration
               - s3:InitiateReplication
-              - s3:DeleteObjectVersion
-              - s3:DeleteObject
             Resource:
               - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}"
               - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
           - Effect: Allow
             Principal:
               Service:
                 - !Sub "cloudtrail.${AWS::URLSuffix}"
             Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
               - s3:GetBucketAcl
-              - s3:GetBucketPolicy
             Resource:
               - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}"
-              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
           - Effect: Allow
             Principal:
               Service:
-                - !Sub "lambda.${AWS::URLSuffix}"
+                - !Sub "cloudtrail.${AWS::URLSuffix}"
+            Action:
+              - s3:PutObject
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/AWSLogs/*"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+          - Effect: Allow
+            Principal:
+              Service: !Sub "lambda.${AWS::URLSuffix}"
             Action:
               - s3:GetObject
+              - s3:GetObjectVersion
             Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/lambdas/*"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
           - Effect: Allow
             Principal:
               Service:
                 - !Sub "states.${AWS::URLSuffix}"
             Action:
               - s3:GetObject
-              - s3:GetBucketPolicy
               - s3:GetObjectVersion
             Resource:
-              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}"
-              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
+              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/templates/*"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
 Outputs:
   DeploymentRoleArn:
     Description: Arn for deployment role
@@ -354,7 +442,6 @@ Outputs:
     Condition: CreateChildStack
     Description: Id of child stack
     Value: !Ref "JobAgentStack"
-  ChildStackName:
-    Condition: CreateChildStack
-    Description: Name of child stack
-    Value: !Sub "${BaseName}-child-stack-${HashSuffix}"
+  Suffix:
+    Description: Suffix for stack
+    Value: !Ref "HashSuffix"
