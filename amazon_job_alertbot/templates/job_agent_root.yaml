@@ -1,20 +1,29 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: |
-  Deploys necessary s3 bucket and CF deployment role for broader job agent deployment. This allows templates and functions to be uploaded by the deployment script in advance of the main template execution.
+  Deploys all JobAgent resources in two batches, first setting base roles and infrastructure to enable script to upload templates and functions, and then finalizing implementation with all resources needed for the state machine.
 Parameters:
   YourEmail:
     Type: String
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    AllowedPattern: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
     Description: Your email address for the SNS topic
+    ConstraintDescription: Must be a valid email address using Western characters
     NoEcho: true
   BaseName:
     Type: String
     Description: Base name for resources
     Default: job-agent
+    MaxLength: 14
+    MinLength: 4
+    ConstraintDescription: Must only contain letters, numbers, and hyphens.
+    AllowedPattern: ^[a-zA-Z0-9-]+$
   BaseNameTitleCase:
     Type: String
     Description: Base name for resources using title case
     Default: JobAgent
+    MaxLength: 14
+    MinLength: 2
+    ConstraintDescription: Must contain only letters and numbers - no special characters. Preferably use title/camel case because... well... it's in the name
+    AllowedPattern: "^[A-Za-z0-9]+$"
   EventSchedule:
     Type: String
     Description: EventBridge schedule in appropriate format, e.g. rate(24 hours)
@@ -23,10 +32,18 @@ Parameters:
     Type: String
     Description: Language code for job agent, e.g. 'en'
     Default: en
-  LangCountryCode:
+    ConstraintDescription: Must be a valid lower case two-letter ISO 639 set 1 language code
+    MaxLength: 2
+    MinLength: 2
+    AllowedPattern: "^[a-z]+$"
+  IETFCode:
     Type: String
-    Description: Language country code for job agent, e.g. 'US'
-    Default: US
+    Description: Valid IETF language tag, see "https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry"
+    Default: en-US
+    ConstraintDescription: Must be a valid uppercase two-letter country code
+    MaxLength: 8
+    MinLength: 2
+    AllowedPattern: "^[a-zA-Z0-9-]+$"
   TagKey:
     Type: String
     Description: Common tag key for resources
@@ -36,6 +53,10 @@ Parameters:
     Description:
       A random hash used to ensure a unique bucket name, appended as a
       suffix.
+    ConstraintDescription: Must contain only letters and numbers and be 12 characters long
+    AllowedPattern: "^[a-zA-Z0-9]+$"
+    MaxLength: 12
+    MinLength: 12
   UserArns:
     Type: CommaDelimitedList
     Description:
@@ -50,53 +71,13 @@ Parameters:
       Whether the child stack should be enabled, set to true to enable
       childstack
     Default: "false"
-  TemplateFileName:
-    Type: String
-    Description: Name of the template file to be deployed in the child stack
-    Default: cf-child-
-  TemplateUrl:
-    Type: String
-    Description: URL of the template file to be deployed in the child stack
-    Default: none
-    NoEcho: true
-  SelfArn:
-    Type: String
-    Description: ARN of the main stack once created
-    Default: none
 Conditions:
   CreateChildStack: !Equals
     - !Ref "ChildEnabled"
     - "true"
-  SelfArnNotNone: !Not
-    - !Equals
-      - !Ref "SelfArn"
-      - none
+
+Transform: AWS::Serverless-2016-10-31
 Resources:
-  JobAgentStack:
-    Type: AWS::CloudFormation::Stack
-    Condition: CreateChildStack
-    DependsOn: JobAgentBucketPolicy
-    UpdateReplacePolicy: Delete
-    DeletionPolicy: Delete
-    Properties:
-      TemplateURL: !Ref "TemplateUrl"
-      Parameters:
-        BaseName: !Ref "BaseName"
-        BaseNameTitleCase: !Ref "BaseNameTitleCase"
-        YourEmail: !Ref "YourEmail"
-        EventSchedule: !Ref "EventSchedule"
-        LangCode: !Ref "LangCode"
-        LangCountryCode: !Ref "LangCountryCode"
-        TagKey: !Ref "TagKey"
-        BucketName: !Ref "JobAgentBucket"
-        BucketArn: !GetAtt "JobAgentBucket.Arn"
-        HashSuffix: !Ref "HashSuffix"
-        RootArn: !Ref "SelfArn"
-      Tags:
-        - Key: !Ref "TagKey"
-          Value: !Sub "${BaseName}-child-stack"
-        - Key: StackName
-          Value: !Sub "${BaseName}-child-stack-${HashSuffix}"
   JobAgentCFDeploymentRole:
     Type: AWS::IAM::Role
     Properties:
@@ -129,6 +110,9 @@ Resources:
                 Action:
                   - tag:TagResource
                   - tag:UntagResource
+                  - tag:GetResources
+                  - tag:GetTagKeys
+                  - tag:GetTagValues
                 Resource:
                   - "*"
                 Condition:
@@ -175,6 +159,14 @@ Resources:
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
+                  - logs:CreateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:CreateLogStream
+                  - logs:UpdateLogDelivery
+                  - logs:PutDestination
+                  - logs:PutDestinationPolicy
+                  - logs:PutLogEvents
+                  - logs:PutResourcePolicy
                   - logs:DeleteLogGroup
                   - logs:PutRetentionPolicy
                   - logs:Describe*
@@ -431,6 +423,753 @@ Resources:
             Condition:
               StringLikeIfExists:
                 aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+  JobAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${BaseName}-log-group/"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-logs"
+  JobAgentLogGroupPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub "${BaseNameTitleCase}LogGroupPolicy"
+      PolicyDocument: !Join
+        - ""
+        - - '{"Version":"2012-10-17","Statement":[{"Sid":"JobAgentLogDeliveryWrite","Effect":"Allow","Principal":{"Service": ["states.'
+          - !Ref AWS::URLSuffix
+          - '","cloudtrail.'
+          - !Ref AWS::URLSuffix
+          - '","lambda.'
+          - !Ref AWS::URLSuffix
+          - '","sqs.'
+          - !Ref AWS::URLSuffix
+          - '","sns.'
+          - !Ref AWS::URLSuffix
+          - '","cloudformation.'
+          - !Ref AWS::URLSuffix
+          - '","events.'
+          - !Ref AWS::URLSuffix
+          - '","delivery.logs.'
+          - !Ref AWS::URLSuffix
+          - '"], "AWS":["'
+          - !Select [0, !Ref UserArns]
+          - '","'
+          - !Select [1, !Ref UserArns]
+          - '"]"},"Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":["'
+          - !GetAtt JobAgentLogGroup.Arn
+          - '","'
+          - !GetAtt JobAgentLogGroup.Arn
+          - '/*","'
+          - !GetAtt StateMachineLogDelivery.Arn
+          - '"],"Condition":{"StringLikeIfExists":{"aws:PrincipalTag/'
+          - !Ref TagKey
+          - '":"'
+          - !Ref BaseName
+          - '*"}}}]}'
+
+  StateMachineLogDelivery:
+    Type: AWS::Logs::Delivery
+    Condition: CreateChildStack
+    Properties:
+      DeliveryDestinationArn: !Ref JobAgentLogGroup
+      DeliverySourceName: !Sub "${BaseNameTitleCase}-StateMachine"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-logs-statemachine-delivery-agent"
+  JobAgentCloudTrailCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "cloudtrail.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}TrailLogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:GetLogRecord
+                  - logs:GetLogGroupFields
+                  - logs:PutRetentionPolicy
+                  - logs:PutMetricFilter
+                  - logs:PutDestination
+                  - logs:PutDestinationPolicy
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:StartQuery
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cloudtrail/:*"
+                  - !GetAtt "JobAgentLogGroup.Arn"
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/appsignals/*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketAcl
+                Resource:
+                  - !GetAtt "JobAgentBucket.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Join ["", [!GetAtt "JobAgentBucket.Arn", "/AWSLogs/*"]]
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-log-role"
+  JobAgentCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub "${BaseNameTitleCase}Trail"
+      CloudWatchLogsLogGroupArn: !GetAtt "JobAgentLogGroup.Arn"
+      CloudWatchLogsRoleArn: !GetAtt "JobAgentCloudTrailCloudWatchRole.Arn"
+      S3BucketName: !Ref JobAgentBucket
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: false
+      EnableLogFileValidation: true
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-trail"
+  JobAgentLambdaBaseRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}LambdaLogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource:
+                  - !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-log-role"
+  JobAgentStoreTable:
+    Type: AWS::DynamoDB::Table
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      TableName: !Sub "${BaseName}-store"
+      AttributeDefinitions:
+        - AttributeName: id_icims
+          AttributeType: S
+        - AttributeName: last_updated
+          AttributeType: S
+        - AttributeName: last_scrape
+          AttributeType: S
+        - AttributeName: posted_date
+          AttributeType: S
+        - AttributeName: date_off_market
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      ContributorInsightsSpecification:
+        Enabled: true
+      DeletionProtectionEnabled: false
+      GlobalSecondaryIndexes:
+        - IndexName: last_scrape-index
+          ContributorInsightsSpecification:
+            Enabled: true
+          KeySchema:
+            - AttributeName: last_scrape
+              KeyType: HASH
+            - AttributeName: id_icims
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: date_off_market-index
+          ContributorInsightsSpecification:
+            Enabled: true
+          KeySchema:
+            - AttributeName: id_icims
+              KeyType: HASH
+            - AttributeName: date_off_market
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      KeySchema:
+        - AttributeName: id_icims
+          KeyType: HASH
+        - AttributeName: last_updated
+          KeyType: RANGE
+      LocalSecondaryIndexes:
+        - IndexName: posted_date-index
+          KeySchema:
+            - AttributeName: id_icims
+              KeyType: HASH
+            - AttributeName: posted_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TableClass: STANDARD_INFREQUENT_ACCESS
+      SSESpecification:
+        SSEEnabled: false
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-job-db-store"
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Condition: CreateChildStack
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      QueueName: !Sub "${BaseName}-queue-${AWS::AccountId}.fifo"
+      FifoQueue: true
+      MessageRetentionPeriod: 160000
+      VisibilityTimeout: 400
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-queue-${AWS::AccountId}.fifo"
+  JobQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Condition: CreateChildStack
+    Properties:
+      Queues:
+        - !Ref "JobQueue"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "states.${AWS::URLSuffix}"
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt "JobQueue.Arn"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+          - Effect: Allow
+            Action:
+              - sqs.ReceiveMessage
+              - sqs.DeleteMessage
+              - sqs.GetQueueAttributes
+              - sqs.PurgeQueue
+            Resource: !GetAtt "JobQueue.Arn"
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}:
+                  - !Sub "${BaseName}*"
+  JobSubscriberTopic:
+    Type: AWS::SNS::Topic
+    Condition: CreateChildStack
+    Properties:
+      ContentBasedDeduplication: true
+      DisplayName: AMZN Job Agent Report
+      FifoTopic: true
+      TopicName: !Sub "${BaseName}-topic.fifo"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-topic.fifo"
+  JobSubscriberTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Condition: CreateChildStack
+    Properties:
+      Topics:
+        - !Ref "JobSubscriberTopic"
+      PolicyDocument:
+        Id: !Sub ${BaseNameTitleCase}TopicPolicy
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Sid: LambdaSNSJobSubAccess
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Action:
+              - sns:Publish
+              - sns:GetTopicAttributes
+              - sns:Subscribe
+            Resource:
+              - !Ref "JobSubscriberTopic"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+          - Effect: Allow
+            Sid: CloudFormationSNSJobSubAccess
+            Principal:
+              Service:
+                - !Sub "cloudformation.${AWS::URLSuffix}"
+            Action:
+              - "sns:AddPermission"
+              - "sns:DeleteTopic"
+              - "sns:GetDataProtectionPolicy"
+              - "sns:GetTopicAttributes"
+              - "sns:ListSubscriptionsByTopic"
+              - "sns:ListTagsForResource"
+              - "sns:PutDataProtectionPolicy"
+              - "sns:Subscribe"
+            Resource:
+              - !Ref "JobSubscriberTopic"
+            Condition:
+              StringLikeIfExists:
+                aws:PrincipalTag/${!Ref TagKey}: !Sub "${BaseName}*"
+  JobAgentTriggerEventRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "events.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}TriggerEventRolePolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${BaseNameTitleCase}-StateMachine:*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - xray:PutTelemetryRecords
+                  - xray:PutTraceSegments
+                Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-trigger-event-role"
+  VarReplacerFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-var-replacer"
+      Handler: var_replacer.handler
+      Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
+      Runtime: python3.11
+      Code:
+        S3Bucket: !Ref "JobAgentBucket"
+        S3Key: lambdas/var_replacer.zip
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-var-replacer"
+  RequestsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: Requests
+      Description: v.2.23.0
+      ContentUri:
+        Bucket: awsserverlessrepo-changesets-plntc6bfnfj
+        Key: "019703030783/arn:aws:serverlessrepo:us-east-1:554326023307:applications-Requests-versions-2.25.0/262f4b00-2614-4331-9b74-03d24d3b41eb"
+      CompatibleRuntimes:
+        - python3.6
+        - python3.7
+        - python3.8
+        - python3.11
+  JobAgentScraperFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-job-scraper"
+      Handler: job_scraper.handler
+      Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
+      Runtime: python3.11
+      Code:
+        S3Bucket: !Ref "JobAgentBucket"
+        S3Key: lambdas/job_scraper.zip
+      Layers:
+        - !Ref RequestsLayer
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-job-scraper"
+  JobAgentLambdaStoreRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}LogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                Resource: !GetAtt "JobAgentStoreTable.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-log-role"
+  JobAgentStoreFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-job-store"
+      Handler: job_store.handler
+      Role: !GetAtt "JobAgentLambdaStoreRole.Arn"
+      Runtime: python3.11
+      Code:
+        S3Bucket: !Ref JobAgentBucket
+        S3Key: lambdas/job_store.zip
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-job-store"
+  JobAgentLambdaSenderRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "lambda.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}LogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: !GetAtt "JobAgentLogGroup.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:PurgeQueue
+                Resource: !GetAtt "JobQueue.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref "JobSubscriberTopic"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-log-role"
+  JobAgentSenderFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-job-sender"
+      Handler: job_sender.handler
+      Role: !GetAtt "JobAgentLambdaSenderRole.Arn"
+      Runtime: python3.11
+      Code:
+        S3Bucket: !Ref "JobAgentBucket"
+        S3Key: lambdas/job_sender.zip
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-job-sender"
+  ErrorHandlerFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-error-handler"
+      Handler: error_handler.handler
+      Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
+      Runtime: python3.11
+      Code:
+        S3Bucket: !Ref "JobAgentBucket"
+        S3Key: lambdas/error_handler.zip
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-error-handler"
+  JobAgentStateMachineExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-state-machine-execution-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "states.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}StateMachineExecutionPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt "JobAgentScraperFunction.Arn"
+                  - !GetAtt "JobAgentStoreFunction.Arn"
+                  - !GetAtt "JobAgentSenderFunction.Arn"
+                  - !GetAtt "ErrorHandlerFunction.Arn"
+                  - !GetAtt "VarReplacerFunction.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt "JobQueue.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutLogEvents
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource:
+                  - !GetAtt "JobAgentLogGroup.Arn"
+                  - !GetAtt "StateMachineLogDelivery.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectAcl
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                  - s3:GetBucketAcl
+                Resource: !GetAtt "JobAgentBucket.Arn"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+                Condition:
+                  StringLikeIfExists:
+                    aws:ResourceTag/${!Ref TagKey}: !Sub "${BaseName}*"
+  JobAgentStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Condition: CreateChildStack
+    DependsOn: [StateMachineLogDelivery]
+    Properties:
+      StateMachineName: !Sub "${BaseNameTitleCase}-StateMachine"
+      RoleArn: !GetAtt "JobAgentStateMachineExecutionRole.Arn"
+      DefinitionS3Location:
+        Bucket: !Ref "JobAgentBucket"
+        Key: !Sub "templates/statemachine-${HashSuffix}.json"
+      DefinitionSubstitutions:
+        JobAgentScraperFunctionArn: !GetAtt "JobAgentScraperFunction.Arn"
+        JobAgentStoreFunctionArn: !GetAtt "JobAgentStoreFunction.Arn"
+        JobAgentSenderFunctionArn: !GetAtt "JobAgentSenderFunction.Arn"
+        JobAgentStoreTableName: !Ref "JobAgentStoreTable"
+        JobAgentStoreTableArn: !GetAtt "JobAgentStoreTable.Arn"
+        ErrorHandlerFunctionArn: !GetAtt "ErrorHandlerFunction.Arn"
+        VarReplacerFunctionArn: !GetAtt "VarReplacerFunction.Arn"
+        JobQueueUrl: !Ref "JobQueue"
+        SNSJobSubscriberTopicArn: !Ref "JobSubscriberTopic"
+        SNSJobSubscriberTopicName: !GetAtt "JobSubscriberTopic.TopicName"
+      StateMachineType: STANDARD
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt "JobAgentLogGroup.Arn"
+        IncludeExecutionData: true
+        Level: ALL
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Sub "${BaseName}-StateMachine"
+  JobAgentStateMachineLatestVer:
+    Type: AWS::StepFunctions::StateMachineVersion
+    Condition: CreateChildStack
+    Properties:
+      Description: This version points to the most recent revision of a state machine.
+      StateMachineArn: !Ref JobAgentStateMachine
+      StateMachineRevisionId: !GetAtt JobAgentStateMachine.StateMachineRevisionId
+  JobAgentTriggerEvent:
+    Type: AWS::Events::Rule
+    Condition: CreateChildStack
+    Properties:
+      Name: !Sub "${BaseName}-trigger-event"
+      Description:
+        A scheduled event used to trigger the state machine and associated
+        functions.
+      ScheduleExpression: !Ref "EventSchedule"
+      State: ENABLED
+      Targets:
+        - Id: TargetFunction
+          Arn: !Ref JobAgentStateMachineLatestVer
+          RoleArn: !GetAtt "JobAgentTriggerEventRole.Arn"
+          Input: !Sub |
+            {
+              "source:" "aws.events",
+              "detail-type": "Scheduled Event to trigger JobAgent state machine",
+              "detail": {
+                "replacements": {},
+                "SearchSettings": {
+                  "lang_code": "${LangCode}",
+                  "criteria": {
+                    "offset": 0,
+                    "result_limit": 10,
+                    "sort": "recent",
+                    "latitude": "",
+                    "longitude": "",
+                    "loc_group_id": [],
+                    "loc_query": [],
+                    "base_query": "your search query",
+                    "city": [],
+                    "country": ["USA"],
+                    "region": [],
+                    "county": [],
+                    "query_options": []
+                  },
+                  "facets": {
+                    "normalized_country_code": ["USA"],
+                    "normalized_state_name": [],
+                    "normalized_city_name": [],
+                    "location": [],
+                    "business_category": ["amazon-web-services"],
+                    "category": [
+                      "project-program-product-management-technical",
+                      "solutions-architect",
+                      "project-program-product-management-non-tech"
+                    ],
+                    "schedule_type_id": ["Full-Time"],
+                    "employee_class": [],
+                    "normalized_location": [],
+                    "job_function": [],
+                    "is_manager": [],
+                    "is_intern": []
+                  },
+                  "headers": {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:122.0) Gecko/20100101 Firefox/122.0",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "${IETFCode},${LangCode};q=0.5",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Referer": "https://www.amazon.jobs/${LangCode}/search",
+                    "Connection": "keep-alive"
+                  }
+                },
+                "DBSettings": {
+                  "db_name": "dynamodb",
+                  "table_name": "${JobAgentStoreTable}",
+                  "sqs_queue_url": "${JobQueue}"
+                },
+                "SendSettings": {
+                  "topic_arn": ${JobSubscriberTopic}",
+                  "subject": "Your Amazon Jobs For {{today}}",
+                  "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
+                  "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",
+                  "email_intro": "<html><head></head><body><h1>Your Amazon Jobs Update for {{today}}</h1><br>new jobs: {{job_count}}<br>",
+                  "email_entry": "<p><h2><a href='{{job_path}}'>{{title}}, {{city}}</a></h2></p>{{description_short}}</p><br><p><a href='{{url_next_step}}'>apply</a></p><br>",
+                  "email_outro": "</body></html>",
+                  "sms": "new_job: {{title}}, {{city}}\nurl: {{job_path}}\n"
+                }
+              }
+            }
+
 Outputs:
   DeploymentRoleArn:
     Description: Arn for deployment role
@@ -438,10 +1177,20 @@ Outputs:
   JobAgentS3Name:
     Description: Name of S3 bucket
     Value: !Ref "JobAgentBucket"
-  ChildStackId:
-    Condition: CreateChildStack
-    Description: Id of child stack
-    Value: !Ref "JobAgentStack"
   Suffix:
     Description: Suffix for stack
     Value: !Ref "HashSuffix"
+  ChildExists:
+    Description: Whether child stack exists
+    Value: !Ref ChildEnabled
+  LambdaLayer:
+    Description: Lambda layer for requests library
+    Value: !Ref "RequestsLayer"
+  StateMachineArn:
+    Condition: CreateChildStack
+    Description: Arn for the state machine
+    Value: !Ref JobAgentStateMachineLatestVer
+  TriggerEvent:
+    Condition: CreateChildStack
+    Description: Arn for the trigger event
+    Value: !Ref JobAgentTriggerEvent

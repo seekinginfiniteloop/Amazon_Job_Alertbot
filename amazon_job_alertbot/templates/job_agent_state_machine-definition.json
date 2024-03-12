@@ -1,0 +1,312 @@
+{
+  "Comment": "State Machine for orchestrating Amazon Jobs alert bot",
+  "StartAt": "ReplaceParams",
+  "States": {
+    "ReplaceParams": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${VarReplacerFunctionArn}",
+        "Payload": "$"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 180,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "HandleError"
+        }
+      ],
+      "Next": "InvokeJobScraper"
+    },
+    "InvokeJobScraper": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${JobAgentScraperFunctionArn}",
+        "Payload.$": "$"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 600,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "HandleError"
+        }
+      ],
+      "ResultPath": "$.ScraperResult",
+      "Next": "EvalScrapeResponse"
+    },
+    "EvalScrapeResponse": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.ScraperResult.jobs",
+          "IsPresent": true,
+          "Next": "InvokeJobStore"
+        }
+      ],
+      "Default": "EndState"
+    },
+    "InvokeJobStore": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${JobAgentStoreFunctionArn}",
+        "Payload": {
+          "dbparams": "$.dbparams",
+          "jobs.$": "$.ScraperResult.jobs",
+          "remaining_hits.$": "$.ScraperResult.remaining_hits",
+          "tablename": "${JobAgentStoreTable}",
+          "tablearn": "{$JobAgentStoreTableArn}"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 240,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "HandleError"
+        }
+      ],
+      "ResultPath": "$.StoreResult",
+      "Next": "CheckForJobs"
+    },
+    "CheckForJobs": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.StoreResult.new_jobs",
+          "IsPresent": true,
+          "Next": "SplitBranch"
+        }
+      ],
+      "Default": "EndState"
+    },
+    "SplitBranch": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "SendJobBatch",
+          "States": {
+            "SendJobBatch": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::aws-sdk:sqs:sendMessage",
+              "Parameters": {
+                "QueueUrl": "${JobQueueUrl}",
+                "MessageBody.$": "$.StoreResult.new_jobs"
+              },
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Lambda.ClientExecutionTimeoutException",
+                    "Lambda.ServiceException",
+                    "Lambda.AWSLambdaException",
+                    "Lambda.SdkClientException"
+                  ],
+                  "IntervalSeconds": 3,
+                  "MaxAttempts": 6,
+                  "BackoffRate": 2
+                }
+              ],
+              "TimeoutSeconds": 30,
+              "End": true
+            }
+          }
+        }
+      ],
+      "Next": "EvalStoreResponse"
+    },
+    "EvalStoreResponse": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.StoreResult.remaining_hits",
+              "NumericGreaterThan": 0
+            },
+            {
+              "Variable": "$.StoreResult.more_jobs",
+              "BooleanEquals": true
+            },
+            {
+              "Variable": "$.StoreResult.newest_scrape",
+              "IsPresent": true
+            }
+          ],
+          "Next": "PassBackToInvoke"
+        },
+        {
+          "Variable": "$.StoreResult.more_jobs",
+          "BooleanEquals": false,
+          "Next": "PassToSender"
+        }
+      ],
+      "Default": "EndState"
+    },
+    "PassBackToInvoke": {
+      "Type": "Pass",
+      "Parameters": {
+        "searchparams.$": "$.searchparams",
+        "dbparams.$": "$.dbparams",
+        "sendparams.$": "$.sendparams",
+        "remaining_hits.$": "$.StoreResult.remaining_hits",
+        "newest_scrape.$": "$.StoreResult.newest_scrape"
+      },
+      "Next": "InvokeJobScraper"
+    },
+    "PassToSender": {
+      "Type": "Pass",
+      "Parameters": {
+        "sendparams": "$.sendparams"
+      },
+      "Next": "InvokeSender"
+    },
+    "InvokeSender": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${JobAgentSenderFunctionNameArn}",
+        "InvocationType": "RequestResponse",
+        "Payload": {
+        "sendparams": "$.sendparams",
+        "snstopic": "${SNSJobSubscriberTopicName}",
+        "snstopicarn": "${SNSJobSubscriberTopicArn}"
+        }
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ClientExecutionTimeoutException",
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "TimeoutSeconds": 900,
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "HandleError"
+        }
+      ],
+      "Next": "EndState"
+    },
+    "HandleError": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ErrorHandlerFunctionARN}",
+        "Payload.$": "$",
+        "errorInfo.$": "$.errorInfo"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailedExecution"
+        }
+      ],
+      "Next": "DecideOnError"
+    },
+    "DecideOnError": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.status_code",
+              "NumericEquals": 200
+            },
+            {
+              "Variable": "$.error_resend",
+              "IsPresent": false
+            }
+          ],
+          "Next": "SetErrorResend"
+        }
+      ],
+      "Default": "FailedExecution"
+    },
+    "SetErrorResend": {
+      "Type": "Pass",
+      "Parameters": {
+        "error_resend": true,
+        "errorInfo_firstrun": "$.errorInfo",
+        "Payload": "$"
+      },
+      "Next": "RouteRetry"
+    },
+    "RouteRetry": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.state",
+          "StringEquals": "InvokeJobScraper",
+          "Next": "InvokeJobScraper"
+        },
+        {
+          "Variable": "$.state",
+          "StringEquals": "InvokeJobStore",
+          "Next": "InvokeJobStore"
+        },
+        {
+          "Variable": "$.state",
+          "StringEquals": "InvokeSender",
+          "Next": "InvokeSender"
+        }
+      ],
+      "Default": "FailedExecution"
+    },
+    "EndState": {
+      "Type": "Succeed"
+    },
+    "FailedExecution": {
+      "Type": "Fail"
+    }
+  }
+}
