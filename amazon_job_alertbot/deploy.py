@@ -1,4 +1,5 @@
 import argparse
+import base64
 import contextlib
 import hashlib
 import io
@@ -79,8 +80,8 @@ def parse_cli() -> argparse.Namespace | None:
         "-t",
         "--tag",
         type=str,
-        help="tag key to apply to all resources in the stack. Defaults to 'JobAlertsAgent'.",
-        default="JobAlertsAgent",
+        help="tag key to apply to all resources in the stack. Defaults to 'jobalertsagent'.",
+        default="jobalertsagent",
         dest="tagkey",
     )
     parser.add_argument(
@@ -93,26 +94,118 @@ def parse_cli() -> argparse.Namespace | None:
     return parser.parse_args()
 
 
-def assemble_params(args: argparse.Namespace, template: str = None) -> ParamDictType:
+def gen_temp_s3(base_name: str, suffix: str) -> str:
+    """
+    Generates a temporary S3 bucket for the stack.
+
+    Args:
+        base_name: The base name of the stack.
+        suffix: The hash suffix for the stack
+
+    Returns:
+        str: The name of the temporary S3 bucket.
+    """
+    with contextlib.suppress(ClientError):
+        buckets = s3.list_buckets()
+        if existing_buckets := buckets.get("Buckets"):
+            found_bucket: str | None = next(
+                (
+                    bucket.get("Name")
+                    for bucket in existing_buckets
+                    if bucket.get("Name").startswith(base_name)
+                    and bucket.get("Name").endswith("buildbucket")
+                ),
+                None,
+            )
+    bucket_name: str = found_bucket or f"{base_name}-temp-{suffix}-buildbucket"
+    try:
+        waiter = s3.get_waiter("bucket_exists")
+        response = s3.create_bucket(Bucket=bucket_name)
+        waiter.wait(Bucket=bucket_name)
+        return response.get("Location")
+    except ClientError as e:
+        print(f"failed to create a temporary bucket for managing the build, error: {e}")
+        raise e
+
+
+def empty_and_delete_bucket(bucket_name: str) -> None:
+    """
+    Empties and deletes a temporary S3 bucket.
+
+    Args:
+        bucket_name: The name of the temporary S3 bucket.
+    """
+    bucket = s3r.Bucket(bucket_name)
+    bucket.objects.all().delete()
+    bucket.delete()
+
+
+def clean_unfinished(base_name: str) -> None:
+    """
+    Cleans up unfinished stacks.
+
+    Args:
+        base_name: The base name of the stack.
+    """
+    with contextlib.suppress(ClientError):
+        if stacks := cf.list_stacks(
+            StackStatusFilter=[
+                "DELETE_FAILED",
+                "CREATE_FAILED",
+                "ROLLBACK_FAILED",
+                "DELETE_IN_PROGRESS",
+            ]
+        ).get("StackSummaries"):
+            for stack in stacks:
+                if base_name in stack.get("StackName"):
+                    if bucket := next(
+                        (
+                            r
+                            for r in cf.describe_stack_resources(
+                                StackName=stack.get("StackName")
+                            ).get("StackResources")
+                            if r.get("ResourceType").endswith("Bucket")
+                        ),
+                        None,
+                    ):
+                        s3r.Bucket(
+                            bucket.get("PhysicalResourceId")
+                        ).objects.all().delete()
+                    with contextlib.suppress(WaiterError):
+                        roll_wait = cf.get_waiter("stack_rollback_complete")
+                        cf.rollback_stack(
+                            StackName=stack.get("StackName"), RetainExceptOnCreate=True
+                        )
+                        roll_wait.wait(StackName=stack.get("StackName"))
+                        if still_there := cf.describe_stacks(
+                            StackName=stack.get("StackName")
+                        ).get("Stacks"):
+                            stack = still_there[0]
+                            waiter = cf.get_waiter("stack_delete_complete")
+                            cf.delete_stack(StackName=stack.get("StackName"))
+                            waiter.wait(StackName=stack.get("StackName"))
+                        break
+
+
+def assemble_params(args: argparse.Namespace) -> ParamDictType:
     """
     Assembles parameters for the stack.
 
     Args:
         args: The parsed command line arguments.
-        template: stack template to insert into params; optional unless this is a create_stack run.
-
     Returns:
         dict: The assembled parameters.
     """
     args = vars(args)
-    base_name: str = args.get("basename", "job-agent")
+    base_name: str = args["basename"]
+    clean_unfinished(base_name=base_name)
     components: list[str] = base_name.split("-")
     base_name_title: str = "".join([item.title() for item in components])
-    suffix: str = gen_hash_suffix(base_name=base_name, newstack=args.get("newstack"))
+    suffix: str = gen_hash_suffix(base_name=base_name, newstack=args["newstack"])
     root_stack_name: str = set_stack_name(
         stack_name=f"{base_name}-root-stack",
         suffix=suffix,
-        newstack=args.get("newstack"),
+        newstack=args["newstack"],
     )
     user_arns: str = get_user_arns()
 
@@ -126,21 +219,24 @@ def assemble_params(args: argparse.Namespace, template: str = None) -> ParamDict
         "TagKey",
         "HashSuffix",
         "UserArns",
+        "StackName",
     ]
-    param_values = [
-        args.get("youremail"),
-        base_name,
-        base_name_title,
-        args.get("event_schedule"),
-        args.get("langcode"),
-        args.get("ietf_code"),
-        args.get("tagkey"),
-        suffix,
-        user_arns,
-    ]
+    parameters = {
+        "YourEmail": args["youremail"],
+        "BaseName": base_name,
+        "BaseNameTitleCase": base_name_title,
+        "EventSchedule": args["event_schedule"],
+        "LangCode": args["langcode"],
+        "IETFCode": args["ietf_code"],
+        "TagKey": args["tagkey"].lower(),
+        "HashSuffix": suffix,
+        "UserArns": user_arns,
+        "StackName": root_stack_name,
+    }
+
     return {
         "StackName": root_stack_name,
-        "TemplateBody": template,
+        "TemplateURL": "",  # We'll add this later
         "Capabilities": [
             "CAPABILITY_IAM",
             "CAPABILITY_NAMED_IAM",
@@ -160,16 +256,38 @@ def assemble_params(args: argparse.Namespace, template: str = None) -> ParamDict
         }
         """,
         "Parameters": [
-            {"ParameterKey": k, "ParameterValue": v}
-            for k, v in zip(param_keys, param_values)
+            {"ParameterKey": k, "ParameterValue": parameters[k]} for k in param_keys
         ],
         "Tags": [
-            {"Key": f"{args.get("tagkey")}", "Value": f"{root_stack_name}"},
+            {"Key": args["tagkey"].lower(), "Value": args["tagkey"].lower()},
             {"Key": "StackName", "Value": f"{base_name}-root-stack"},
         ],
         "DisableRollback": True,
         # "EnableTerminationProtection": True,
     }
+
+
+def fix_tag_keys(tag_key: str, template: Path) -> Path:
+    """
+    Fixes tag keys in the template. Because map keys can't contain intrinsic functions, we have to do this the old fashioned way.
+
+    Args:
+        tag_key: The tag key to fix.
+        template: The template to fix.
+
+    Return:
+        the new Path of the adjusted template
+    """
+    with open(file=template, mode="r") as f:
+        data: str = f.read()
+    start_pt: int = re.search(pattern=r"(Resources[:])", string=data).end()
+    static, updated = data[:start_pt], data[start_pt:]
+    updated: str = updated.replace("jobalertsagent", tag_key)
+    new_data: str = static + updated
+    new_path: Path = template.with_name(f"{template.stem}_adjusted{template.suffix}")
+    with open(file=new_path, mode="w") as f:
+        f.write(new_data)
+    return new_path
 
 
 def reorient(loop_count: int = 0) -> Path:
@@ -199,7 +317,7 @@ def reorient(loop_count: int = 0) -> Path:
     )
 
 
-def get_templates() -> tuple[Path, Path]:
+def get_template() -> tuple[Path, Path]:
     """
     Retrieves the paths of templates from the templates directory.
 
@@ -208,9 +326,7 @@ def get_templates() -> tuple[Path, Path]:
     """
     templates_dir = Path.cwd() / "templates"
     path = templates_dir if templates_dir.exists() else reorient() / "templates"
-    stack_template = next(path.glob(pattern="*root*.yaml"), None)
-    statemachine_template = next(path.glob(pattern="*machine*.json"), None)
-    return stack_template, statemachine_template
+    return next(path.glob(pattern="*root*.yaml"), None)
 
 
 def gen_hash_suffix(base_name: str, newstack: bool = False) -> str:
@@ -242,7 +358,7 @@ def gen_hash_suffix(base_name: str, newstack: bool = False) -> str:
     return secrets.token_hex(6)
 
 
-def stack_name_matches(stack, base_name) -> Any | bool:
+def stack_name_matches(stack, base_name: str) -> Any | bool:
     """
     Checks if the stack name matches the base name, excluding the suffix and not marked for deletion.
 
@@ -443,10 +559,9 @@ def set_update_params(params: ParamDictType, stack: dict[str, Any], s3key: str) 
     bucket_name: str | None = get_output_value(
         output=stack["Outputs"], key_value="JobAgentS3Name"
     )
+    params["TemplateURL"] = get_template_url(s3key=s3key, bucket=bucket_name)
 
     for param in params["Parameters"]:
-        if param["ParameterKey"] == "HashSuffix":
-            suffix = param["ParameterValue"]
         if param.get("ParameterKey") not in [
             "EventSchedule",
             "LangCode",
@@ -462,14 +577,21 @@ def set_update_params(params: ParamDictType, stack: dict[str, Any], s3key: str) 
     params["Parameters"].append(
         {"ParameterKey": "ChildEnabled", "ParameterValue": "true"}
     )
+    params
     if child_exists:
         pop_if_present(params=params, key="TemplateBody")
-        params["TemplateURL"] = get_template_url(s3key=s3key, bucket=bucket_name)
-        params.pop("TemplateBody")
-        params["RoleARN"] = get_output_value(
-            output=stack["Outputs"],
-            key_value="DeploymentRoleArn",
+        params["Tags"].append(
+            {
+                "Key": "AppManagerCFNStackKey",
+                "Value": cf.describe_stacks(StackName=params["StackName"])["Stacks"][
+                    0
+                ].get("StackId"),
+            }
         )
+        # params["RoleARN"] = get_output_value(
+        #    output=stack["Outputs"],
+        #    key_value="DeploymentRoleArn",
+        # )
     return params
 
 
@@ -562,14 +684,11 @@ def push_objects(bucket: str, suffix: str) -> list[tuple[str, Path, str]]:
 
     template_s3 = "templates/"
     for file in templates_path.iterdir():
-        if file.suffix == ".json" and "machine" in file.stem:
-            destinations.append(
-                (f"{template_s3}statemachine-{suffix}.json", file, "text/plain")
-            )
-        elif file.suffix == ".yaml" and "root" in file.stem:
+        if file.suffix == ".yaml" and "root" in file.stem:
             destinations.append(
                 (f"{template_s3}cf-root-{suffix}.yaml", file, "text/plain")
             )
+            break
 
     lambda_path: Path = cwd / "lambdas"
     if not lambda_path.exists():
@@ -591,7 +710,7 @@ def push_objects(bucket: str, suffix: str) -> list[tuple[str, Path, str]]:
     return destinations
 
 
-def zip_script(script_path: Path) -> Path:
+def zip_script(script_path: Path) -> io.BufferedReader:
     """
     Zips a single file in a virtual byte_buffer zip file for uploading
 
@@ -644,7 +763,7 @@ def object_exists(bucket, s3_key: str) -> bool:
 
 
 def check_and_upload_to_s3(
-    bucket: str, files: list[tuple[str, Path | io.BytesIO, str]]
+    bucket: str, files: list[tuple[str, Path | io.BufferedReader, str]]
 ) -> None:
     """
     Checks if a file exists in an S3 bucket and uploads it if it doesn't.
@@ -656,22 +775,22 @@ def check_and_upload_to_s3(
     s3bucket = s3r.Bucket(bucket)
     if bucket_empty(bucket=s3bucket):
         for file in files:
-            s3_key, file_path, content_type = file
+            s3_key, file_obj, content_type = file
             upload_to_s3(
                 bucket=bucket,
-                file_path=file_path,
+                file_obj=file_obj,
                 s3_key=s3_key,
                 content_type=content_type,
             )
     else:
         for file in files:
-            s3_key, file_path, content_type = file
+            s3_key, file_obj, content_type = file
             if object_exists(bucket=s3bucket, s3_key=s3_key):
                 s3object = s3bucket.Object(s3_key)
-                if is_different(file_path=file_path, s3object=s3object):
+                if is_different(file_obj=file_obj, s3object=s3object):
                     upload_to_s3(
                         bucket=bucket,
-                        file_path=file_path,
+                        file_obj=file_obj,
                         s3_key=s3_key,
                         content_type=content_type,
                     )
@@ -679,18 +798,18 @@ def check_and_upload_to_s3(
                 continue
             upload_to_s3(
                 bucket=bucket,
-                file_path=file_path,
+                file_obj=file_obj,
                 s3_key=s3_key,
                 content_type=content_type,
             )
 
 
-def is_different(file_path: Path | io.BytesIO, s3object: str) -> bool:
+def is_different(file_obj: Path | io.BufferedReader, s3object: str) -> bool:
     """
     Compares the hash of the local file with the hash of the S3 object and returns True if they are different.
 
     Args:
-        file_path (Path): The path to the local file or the BytesIO object
+        file_obj (Path | BufferedReader): The path to the local file or the BytesIO BufferedReader object
         s3object: The S3 object.
 
     Returns:
@@ -698,34 +817,33 @@ def is_different(file_path: Path | io.BytesIO, s3object: str) -> bool:
     """
     try:
         with contextlib.suppress(ClientError):
-            return get_hash(file_path=file_path) != s3object.e_tag.strip('"')
+            return get_hash_digest(file_obj=file_obj) != s3object.checksum.sha1.strip(
+                '"'
+            )
     except Exception:
         return False
 
 
-def get_hash(file_path: Path | io.BytesIO) -> str:
+def get_hash_digest(file_obj: Path | io.BufferedReader, algo: str = "sha1") -> str:
     """
-    Calculates the MD5 hash of a file.
+    Calculates the base64-encoded hash of a file. Defaults to SHA1.
 
     Args:
-        file_path (Path): The path to the file or BytesIO object
+        file_obj (Path | BufferedReader): The path to the file or BytesIO object
 
     Returns:
-        str: The MD5 hash of the file.
+        str: The base64-encoded hash digest of the file, decoded to utf-8.
 
     """
-    if isinstance(file_path, io.BytesIO):
-        return hashlib.md5(file_path.getvalue()).hexdigest()
-    with open(file=file_path, mode="rb") as f:
-        hasher = hashlib.md5()
-        while chunk := f.read(4096):
-            hasher.update(chunk)
-        return hasher.hexdigest()
+    buff = file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+    buff.seek(0)
+    h = hashlib.new(name=algo, data=buff.read())
+    return base64.b64encode(h.digest()).decode('utf-8')
 
 
 def upload_to_s3(
     bucket: str,
-    file_path: Path | io.BytesIO,
+    file_obj: Path | io.BufferedReader,
     s3_key: str,
     content_type: str | None = None,
 ) -> None:
@@ -734,7 +852,7 @@ def upload_to_s3(
 
     Args:
         bucket: The name of the S3 bucket.
-        file_path: The path to the file to be uploaded or BytesIO object
+        file_obj: The path to the file to be uploaded or BytesIO object
         s3_key: The destination path in the S3 bucket.
         content_type (optional): content-type of object to upload
 
@@ -742,26 +860,41 @@ def upload_to_s3(
         None
     """
     waiter = s3.get_waiter("object_exists")
-    base_name: str = vars(parse_cli()).get("basename")
+    args = vars(parse_cli())
+    tagkey: str = args["tagkey"].lower()
     now = datetime.now()
     print(
-        f"File upload: bucket: {bucket}\n, file_path: {file_path}\n, content_type: {content_type}\n"
+        f"File upload: bucket: {bucket}\n, file_obj: {file_obj}\n, content_type: {content_type}\n"
     )
-    if isinstance(file_path, Path):
-        file_path = file_path.open(mode="rb")
-    s3.upload_fileobj(
-        Fileobj=file_path,
+    body = (
+        file_obj.open(mode="rb")
+        if isinstance(file_obj, Path)
+        else file_obj
+    )
+    body.seek(0)
+    sha_hash = get_hash_digest(file_obj=body)
+    body.seek(0)
+    kwargs_dict: dict[str, bytes | str | bool | None] = {
+        "Body": body,
+        "Bucket": bucket,
+        "Key": s3_key,
+        "ContentMD5": get_hash_digest(file_obj=file_obj, algo="md5"),
+        "ContentType": content_type,
+        "ChecksumAlgorithm": "SHA1",
+        "ChecksumSHA1": get_hash_digest(file_obj=file_obj),
+        "BucketKeyEnabled": True,
+        "Tagging": quote(string=f"{tagkey}={tagkey}"),
+    }
+    response = s3.put_object(**kwargs_dict)
+    waiter.wait(
         Bucket=bucket,
         Key=s3_key,
-        ExtraArgs={
-            "Tagging": quote(string=f"JobAlertsAgent={base_name}-object-{s3_key}"),
-            "ContentType": content_type,
-        },
+        ChecksumMode="ENABLED",
+        IfModifiedSince=now,
+        WaiterConfig={"Delay": 2, "MaxAttempts": 6},
     )
-    waiter.wait(
-        Bucket=bucket, Key=s3_key, IfModifiedSince=now, WaiterConfig={"Delay": 2}
-    )
-
+    if response.get("ResponseMetadata").get("HTTPStatusCode") == 200 and response.get("ResponseMetadata").get("ChecksumSHA1") == sha_hash:
+        print(f"File uploaded to {bucket}/{s3_key} and checksum validated.\n\n")
 
 def get_output_value(output: list[dict[str, str]], key_value: str) -> str | None:
     """
@@ -819,25 +952,48 @@ def main() -> None:
     correct_dir: Path = reorient()
     if Path.cwd() != correct_dir:
         os.chdir(path=correct_dir)
-    root_template, states_template = get_templates()
-    if not states_template:
-        raise ValueError("Couldn't locate statemachine template.")
-    root_params = assemble_params(
-        args=parse_cli(), template=read_template(template_path=root_template)
-    )
+    root_template = get_template()
+    root_params = assemble_params(args=parse_cli())
     params = root_params.get("Parameters")
+    if (
+        tag_key := next(
+            (
+                param.get("ParameterValue")
+                for param in params
+                if param.get("ParameterKey") == "TagKey"
+            ),
+            None,
+        )
+    ) != "jobalertsagent":
+        root_template: Path = fix_tag_keys(tag_key=tag_key, template=root_template)
     root_stack_name = root_params.get("StackName")
     suffix = next(
         param.get("ParameterValue")
         for param in params
         if param.get("ParameterKey") == "HashSuffix"
     )
+    base_name = next(
+        param.get("ParameterValue")
+        for param in params
+        if param.get("ParameterKey") == "BaseName"
+    )
 
     if stack := stack_exists(stack_name=root_stack_name):
-        bucket = get_output_value(
-            output=stack.get("Outputs"), key_value="JobAgentS3Name"
-        )
+        if not vars(parse_cli).get("newstack"):
+            bucket = get_output_value(
+                output=stack.get("Outputs"), key_value="JobAgentS3Name"
+            )
     else:
+        temp_bucket = gen_temp_s3(base_name=base_name, suffix=suffix).strip("/")
+        upload_to_s3(
+            bucket=temp_bucket,
+            file_obj=root_template,
+            s3_key=f"build-temp-{root_template.name}",
+            content_type="text/plain",
+        )
+        root_params["TemplateURL"] = get_template_url(
+            s3key=f"build-temp-{root_template.name}", bucket=temp_bucket
+        )
         output = deploy_cloud(cf_params=root_params)
         if (
             cf.describe_stacks(StackName=root_stack_name)["Stacks"][0].get(
@@ -846,6 +1002,7 @@ def main() -> None:
             != "CREATE_COMPLETE"
         ):
             raise ValueError("Stack creation failed.")
+        empty_and_delete_bucket(bucket_name=temp_bucket)
         bucket = get_output_value(output=output, key_value="JobAgentS3Name")
     push_and_update(bucket=bucket, suffix=suffix, root_params=root_params)
     root_key = f"templates/cf-root-{suffix}.yaml"
@@ -857,7 +1014,20 @@ def main() -> None:
                 and param.get("ParameterValue") == "true"
             ):
                 if not stack.get("RoleARN"):
+                    stack["Parameters"].append(
+                        {"ParameterKey": "EnableInsights", "ParameterValue": "true"}
+                    )
                     update_stacks(cf_params=root_params, s3key=root_key)
+                    with contextlib.suppress(ClientError):
+                        response = boto3.client("sns").subscribe(
+                            TopicArn=get_output_value(
+                                output=stack.get("Outputs"), key_value="TopicArn"
+                            ),
+                            Protocol="email",
+                            Endpoint=vars(parse_cli()).get("youremail"),
+                            ReturnSubscriptionArn=True,
+                        )
+                        print(f"subscription arn: {response.get("SubscriptionArn")}")
                     break
                 else:
                     cleanup()

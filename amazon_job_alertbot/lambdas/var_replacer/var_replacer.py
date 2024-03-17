@@ -62,6 +62,7 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
         dict[str, int | str | Any]: The modified event dictionary with variables
         replaced.
     """
+    logger.debug(f"Event Data:\n {event}")
     replacements = event["detail"].get("replacements", {})
     now = datetime.now(timezone.utc).date()
     replacements["today"] = now.strftime(format="%d %B %y")

@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: |
-  Deploys all JobAgent resources in three batches using pseudo-child stacks, first setting base roles and infrastructure to enable script to upload templates and functions, and then finalizing implementation with all resources needed for the state machine, finally enables application insights once the stack is fully constructed.
+  Deploys all JobAgent resources in two batches, first setting base roles and infrastructure to enable script to upload templates and functions, and then finalizing implementation with all resources needed for the state machine.
 Parameters:
   YourEmail:
     Type: String
@@ -48,8 +48,6 @@ Parameters:
     Type: String
     Description: Common tag key for resources
     Default: jobalertsagent
-    AllowedPattern: "^[a-z0-9-]+$"
-    ConstraintDescription: Must contain only lowercase letters, numbers and hyphens.
   HashSuffix:
     Type: String
     Description:
@@ -64,6 +62,10 @@ Parameters:
     Description:
       ARN of the user, or if a federated user, a series of arns for the
       federation provider, permanent role, and assumed-role session
+  LogGroupSuffix:
+    Type: String
+    Description: Base suffix for the log group, this will be appended to the log path with BaseName
+    Default: -log-group/
   ChildEnabled:
     Type: String
     AllowedValues:
@@ -73,251 +75,127 @@ Parameters:
       Whether the child stack should be enabled, set to true to enable
       childstack
     Default: "false"
-  StackName:
-    Type: String
-    Description: Name of the stack used for ApplicationInsights under CreateChildStack condition.
-    Default: "none"
-  EnableInsights:
-    Type: String
-    Description: Sets the condition for turning on Application Insights after the stack has been created.
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
 Conditions:
   CreateChildStack: !Equals
     - !Ref "ChildEnabled"
     - "true"
-  GetInsights: !Equals
-    - !Ref EnableInsights
-    - "true"
 Transform: AWS::Serverless-2016-10-31
 Resources:
-  CFNPermissionBoundaryPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: !Sub "${BaseName}-cfn-mgmt-perm-boundary"
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Sid: CloudformationPermissionBoundaryBaseline
-            Action:
-              - cloudformation:*
-              - cloudtrail:*
-              - dynamodb:*
-              - events:*
-              - iam:AttachRolePolicy
-              - iam:CreatePolicy
-              - iam:CreatePolicyVersion
-              - iam:CreateRole
-              - iam:CreateServiceLinkedRole
-              - iam:DeletePolicy
-              - iam:DeletePolicyVersion
-              - iam:DeleteRole
-              - iam:DeleteRolePermissionsBoundary
-              - iam:DeleteRolePolicy
-              - iam:DeleteServiceLinkedRole
-              - iam:DetachRolePolicy
-              - iam:GetPolicy
-              - iam:GetPolicyVersion
-              - iam:GetRole
-              - iam:GetRolePolicy
-              - iam:GetServiceLinkedRoleDeletionStatus
-              - iam:ListAttachedRolePolicies
-              - iam:ListPolicies
-              - iam:ListRolePolicies
-              - iam:ListRoles
-              - iam:PutRolePermissionsBoundary
-              - iam:PutRolePolicy
-              - iam:SetDefaultPolicyVersion
-              - iam:UpdateRole
-              - iam:UpdateRoleDescription
-              - iam:TagPolicy
-              - iam:TagRole
-              - iam:UntagPolicy
-              - iam:UntagRole
-              - lambda:*
-              - logs:*
-              - organizations:ListAWSServiceAccessForOrganization
-              - rds:*
-              - resource-groups:*
-              - resource-manager:*
-              - s3:*
-              - sns:*
-              - sns:*
-              - sqs:*
-              - ssm:*
-              - sso:*
-              - states:*
-              - sts:*
-              - sso:*
-              - tag:*
-              - xray:*
-            Resource: "*"
-  StateMachinePermissionBoundaryPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: !Sub "${BaseName}-state-machine-management-permboundary"
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Sid: StateMachinePermissionBoundaryBaseline
-            Action:
-              - events:*
-              - lambda:*
-              - logs:*
-              - organizations:ListAWSServiceAccessForOrganization
-              - s3:*
-              - sns:*
-              - sqs:*
-              - states:*
-              - sts:*
-              - xray:*
-            Resource: "*"
-  LambdaPermissionBoundaryPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: !Sub "${BaseName}-lambda-management-permboundary"
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Sid: LambdaPermissionBoundaryBaseline
-            Action:
-              - dynamodb:*
-              - logs:*
-              - rds:*
-              - s3:*
-              - sns:*
-              - sqs:*
-              - xray:*
-            Resource: "*"
-  JobAgentCFManagementRole:
+  JobAgentCFDeploymentRole:
     Type: AWS::IAM::Role
     Properties:
-      Description: Role for managing the stack after creation.
-      Tags:
-        - Key: !Ref "TagKey"
-          Value: !Ref TagKey
-        - Key: !Sub "${BaseName}rsc_grp"
-          Value: stack-resource
-      PermissionsBoundary: !Ref CFNPermissionBoundaryPolicy
-      RoleName: !Sub "${AWS::Region}-${BaseName}-cfn-mgmt-role"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
             Principal:
-              Service:
-                - !Sub cloudformation.${AWS::URLSuffix}
+              Service: !Sub "cloudformation.${AWS::URLSuffix}"
             Action: sts:AssumeRole
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: stack-resource
       Policies:
-        - PolicyName: CFManagementRolePolicy
+        - PolicyName: !Sub "${BaseNameTitleCase}DeploymentPolicy"
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Sid: ManageStackIAMRolesAndPolicies
-                Effect: Allow
+              - Effect: Allow
+                Sid: AllowFullCFAndSTSAccessForCloudFormRoleJobAgent
                 Action:
+                  - cloudformation:*
+                  - sts:*
+                Resource:
+                  - "*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+              - Effect: Allow
+                Sid: AllowCloudFormRoleToTagAnythingWithOnlyJobAgentKeys
+                Action:
+                  - tag:TagResource
+                  - tag:UntagResource
+                  - tag:GetResources
+                  - tag:GetTagKeys
+                  - tag:GetTagValues
+                Resource:
+                  - "*"
+                Condition:
+                  StringEquals:
+                    aws:TagKeys:
+                      - !Ref "TagKey"
+                      - StackName
+                      - AppManagerCFNStackKey
+              - Effect: Allow
+                Sid: AllowRoleAndServicePermissionsMgmtForCloudFormRole
+                Action:
+                  - iam:AttachGroupPolicy
                   - iam:AttachRolePolicy
+                  - iam:CreateGroup
                   - iam:CreatePolicy
                   - iam:CreatePolicyVersion
                   - iam:CreateRole
                   - iam:CreateServiceLinkedRole
+                  - iam:DeleteGroup
                   - iam:DeletePolicy
-                  - iam:DeletePolicyVersion
                   - iam:DeleteRole
                   - iam:DeleteRolePermissionsBoundary
                   - iam:DeleteRolePolicy
-                  - iam:DeleteServiceLinkedRole
+                  - iam:DeleteServiceBasedRole
+                  - iam:DetachGroupPolicy
                   - iam:DetachRolePolicy
-                  - iam:GetPolicy
-                  - iam:GetPolicyVersion
                   - iam:GetRole
-                  - iam:GetRolePolicy
-                  - iam:GetServiceLinkedRoleDeletionStatus
-                  - iam:ListAttachedRolePolicies
-                  - iam:ListPolicies
-                  - iam:ListRolePolicies
-                  - iam:ListRoles
+                  - iam:List*
+                  - iam:PutGroupPolicy
                   - iam:PutRolePermissionsBoundary
+                  - iam:PutRolePolicy
                   - iam:PutRolePolicy
                   - iam:SetDefaultPolicyVersion
                   - iam:TagPolicy
                   - iam:TagRole
                   - iam:UntagPolicy
                   - iam:UntagRole
-                  - iam:UpdateRole
-                  - iam:UpdateRoleDescription
+                  - iam:UpdateAssumeRolePolicy
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${BaseName}*"
-                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BaseName}*"
-              - Sid: ManageSSOApp
-                Effect: Allow
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${BaseNameTitleCase}*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:group/${BaseNameTitleCase}*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+              - Effect: Allow
+                Sid: AllowGeneralLogDeliveryMgmt
                 Action:
-                  - sso:ListApplication*
-                  - sso:DescribeApplication*
-                  - sso:GetApplication*
-                  - sso:ListTagsForResource
-                  - sso:PutApplication*
-                  - sso:DeleteApplication*
-                  - sso:UpdateApplication*
-                Resource: "*"
-              - Sid: ManageStackTagging
-                Effect: Allow
-                Action:
-                  - applicationinsights:TagResource
-                  - applicationinsights:UntagResource
-                  - dynamodb:Tag*
-                  - dynamodb:Untag*
-                  - events:Tag*
-                  - events:Untag*
+                  - logs:CreateLogDelivery
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DeleteDeliverySource
+                  - logs:DeleteDestination
+                  - logs:DeleteDestinationPolicy
+                  - logs:DeleteLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:DeleteLogGroup
+                  - logs:DeleteLogStream
+                  - logs:DeleteSubscriptionFilter
+                  - logs:Describe*
+                  - logs:DescribeSubscriptionFilters
+                  - logs:FilterLogEvents
+                  - logs:List*
+                  - logs:PutDeliverySource
+                  - logs:PutDestination
+                  - logs:PutDestinationPolicy
+                  - logs:PutLogEvents
+                  - logs:PutResourcePolicy
+                  - logs:PutRetentionPolicy
+                  - logs:PutSubscriptionFilter
                   - logs:Tag*
                   - logs:Untag*
-                  - s3:PutBucketTagging
-                  - s3:PutObjectTagging
-                  - s3:Tag*
-                  - s3:Untag*
-                  - sns:Tag*
-                  - sns:Untag*
-                  - sqs:TagQueue
-                  - sqs:UntagQueue
-                  - sso:TagResource
-                  - sso:UntagResource
-                  - states:TagResource
-                  - states:UntagResource
-                  - tag:GetResources
-                  - tag:GetTagKeys
-                  - tag:GetTagValues
-                  - tag:TagResources
-                  - tag:UntagResources
+                  - logs:UpdateLogDelivery
                 Resource: "*"
                 Condition:
-                  StringLikeIfExists:
-                    "aws:RequestTag/jobalertsagent": !Ref TagKey
-                    "aws:RequestTag/StackName": "*"
-                    "aws:RequestTag/AppManagerCFNStackKey": "*"
-                    "aws:RequestTag/aws:cloudformation": "*"
-              - Sid: ManageStackApplicationInsights
-                Effect: Allow
-                Action:
-                  - applicationinsights:*
-                Resource: "*"
-                Condition:
-                  StringLikeIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
-              - Sid: ManageStackResourceGroup
-                Effect: Allow
-                Action:
-                  - resource-groups:*
-                Resource: "*"
-              - Sid: ManageStackLogging
-                Effect: Allow
-                Action:
-                  - logs:*
-                Resource: "*"
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowEventBridgePermissionsMgmtForCloudFormRole
                 Action:
@@ -327,6 +205,8 @@ Resources:
                   - events:PutRule
                   - events:PutTargets
                   - events:RemoveTargets
+                  - events:Tag*
+                  - events:UnTag*
                   - organizations:ListAWSServiceAccessForOrganization
                 Resource:
                   - !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/${BaseName}*"
@@ -339,12 +219,14 @@ Resources:
                   - states:Describe*
                   - states:DescribeStateMachine
                   - states:List*
+                  - states:TagResource
+                  - states:UntagResource
                   - states:UpdateStateMachine
                 Resource:
                   - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowLambdaControlForJobAgentCloudFormResources
                 Action:
@@ -357,7 +239,7 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:error*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowSQSMgmtForJobAgentQueue
                 Action:
@@ -368,11 +250,13 @@ Resources:
                   - sqs:List*
                   - sqs:RemovePermission
                   - sqs:SetQueueAttributes
+                  - sqs:TagQueue
+                  - sqs:UntagQueue
                 Resource:
                   - !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowSNSSnsMgmtForJobAgentQueue
                 Action:
@@ -386,12 +270,14 @@ Resources:
                   - sns:Set*
                   - sns:SetTopicAttributes
                   - sns:Subscribe
+                  - sns:Tag*
                   - sns:Unsubscribe
+                  - sns:Untag*
                 Resource:
                   - !Sub "arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:${BaseName}*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowTableMgmtForJobAgent
                 Action:
@@ -399,12 +285,14 @@ Resources:
                   - dynamodb:DeleteTable
                   - dynamodb:Describe*
                   - dynamodb:List*
+                  - dynamodb:Tag*
+                  - dynamodb:Untag*
                   - dynamodb:UpdateTable
                 Resource:
                   - !Sub "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${BaseName}*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowS3MgmtForJobAgentCloudFormRole
                 Action:
@@ -417,15 +305,18 @@ Resources:
                   - s3:PutBucketLogging
                   - s3:PutBucketOwnershipControls
                   - s3:PutBucketPolicy
+                  - s3:PutBucketTagging
                   - s3:PutBucketVersioning
                   - s3:PutEncryptionConfiguration
                   - s3:PutLifecycleConfiguration
+                  - s3:Tag*
+                  - s3:Untag*
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}"
                   - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowTracingForCloudFormRole
                 Action:
@@ -433,10 +324,11 @@ Resources:
                   - xray:GetSamplingTargets
                   - xray:PutTelemetryRecords
                   - xray:PutTraceSegments
-                Resource: "*"
+                Resource:
+                  - "*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
   JobAgentBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Delete
@@ -549,11 +441,108 @@ Resources:
               - s3:GetObjectVersion
             Resource:
               - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/templates/*"
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/cloudtrail/${BaseName}${LogGroupSuffix}"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
+  JobAgentLogGroupPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub "${BaseNameTitleCase}LogGroupPolicy"
+      PolicyDocument: !Join
+        - ""
+        - - '{"Version":"2012-10-17","Statement":[{"Sid":"AllowJobAgentLogAccess","Effect":"Allow","Principal":{"Service": ["cloudtrail.'
+          - !Ref AWS::URLSuffix
+          - '","cloudformation.'
+          - !Ref AWS::URLSuffix
+          - '","events.'
+          - !Ref AWS::URLSuffix
+          - '","delivery.logs.'
+          - !Ref AWS::URLSuffix
+          - '","lambda.'
+          - !Ref AWS::URLSuffix
+          - '","states.'
+          - !Ref AWS::URLSuffix
+          - '"]},"Action":["logs:CreateLogStream","logs:PutLogEvents","logs:PutResourcePolicy","logs:DescribeResourcePolicies","logs:DescribeLogGroups","logs:DescribeLogStreams"],"Resource":["*"]'
+          - "}]}"
+  JobAgentCloudTrailCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "cloudtrail.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}TrailLogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: AllowTrailAccessToLogDelivery
+                Effect: Allow
+                Action:
+                  - logs:*
+                  - cloudtrail:*
+                  - xray:*
+                Resource: "*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+              - Sid: AllowTrailAccessToBucket
+                Effect: Allow
+                Action:
+                  - s3:GetBucketAcl
+                Resource:
+                  - !GetAtt "JobAgentBucket.Arn"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+              - Sid: AllowTrailAccessToBucketObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - !Join ["", [!GetAtt "JobAgentBucket.Arn", "/AWSLogs/*"]]
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
+  JobAgentCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub "${BaseNameTitleCase}Trail"
+      CloudWatchLogsLogGroupArn: !GetAtt "CloudTrailLogGroup.Arn"
+      CloudWatchLogsRoleArn: !GetAtt "JobAgentCloudTrailCloudWatchRole.Arn"
+      S3BucketName: !Ref JobAgentBucket
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: false
+      EnableLogFileValidation: true
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentLambdaBaseRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
     Properties:
-      RoleName: !Sub "${AWS::Region}-${BaseName}-lambda-base-role"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -563,9 +552,24 @@ Resources:
                 - !Sub "lambda.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRole
-      ManagedPolicyArns:
-        - !Ref "JobAgentBaseLogAndTracePolicy"
-      PermissionsBoundary: !Ref LambdaPermissionBoundaryPolicy
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}LambdaLogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: AllowBasicLambdaLogTraceAccess
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                  - logs:PutLogEvents
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${BaseName}${LogGroupSuffix}/*/:*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -633,6 +637,8 @@ Resources:
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: app-resource
   JobQueue:
     Type: AWS::SQS::Queue
     Condition: CreateChildStack
@@ -646,6 +652,8 @@ Resources:
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: app-resource
   JobQueuePolicy:
     Type: AWS::SQS::QueuePolicy
     Condition: CreateChildStack
@@ -725,31 +733,10 @@ Resources:
               - sns:Subscribe
             Resource:
               - !Ref "JobSubscriberTopic"
-  JobAgentBaseLogAndTracePolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Condition: CreateChildStack
-    Properties:
-      Description: !Sub "Managed policy for ${BaseNameTitleCase} lambda functions"
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Sid: AllowBasicLambdaLogTraceAccess
-            Effect: Allow
-            Action:
-              - logs:CreateLogStream
-              - logs:CreateLogGroup
-              - logs:PutLogEvents
-              - xray:PutTraceSegments
-              - xray:PutTelemetryRecords
-            Resource: "*"
-            Condition:
-              StringEqualsIfExists:
-                "aws:ResourceTag/jobalertsagent": !Ref TagKey
   JobAgentTriggerEventRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
     Properties:
-      RoleName: !Sub "${AWS::Region}-${BaseName}-events-role"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -759,8 +746,6 @@ Resources:
                 - !Sub "events.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRole
-      ManagedPolicyArns:
-        - !Ref JobAgentBaseLogAndTracePolicy
       Policies:
         - PolicyName: !Sub "${BaseNameTitleCase}TriggerEventRolePolicy"
           PolicyDocument:
@@ -775,12 +760,37 @@ Resources:
                   - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${BaseNameTitleCase}-StateMachine:*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
+              - Effect: Allow
+                Sid: AllowBasicEventLogTraceAccess
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - xray:PutTelemetryRecords
+                  - xray:PutTraceSegments
+                Resource:
+                  - !GetAtt "JobAgentStateMachineLogGroup.Arn"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  LambdaVarReplacerLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BaseName}${LogGroupSuffix}/var-replacer"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   VarReplacerFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
@@ -792,6 +802,11 @@ Resources:
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/var_replacer.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        LogGroup: !Ref LambdaVarReplacerLogGroup
+        SystemLogLevel: DEBUG
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -810,6 +825,18 @@ Resources:
         - python3.7
         - python3.8
         - python3.11
+  LambdaJobScraperLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BaseName}${LogGroupSuffix}/job-scraper"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentScraperFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
@@ -821,6 +848,11 @@ Resources:
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/job_scraper.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        LogGroup: !Ref LambdaJobScraperLogGroup
+        SystemLogLevel: DEBUG
       Layers:
         - !Ref RequestsLayer
       Tags:
@@ -828,11 +860,22 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  LambdaJobStoreLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BaseName}${LogGroupSuffix}/job-store"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentLambdaStoreRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
     Properties:
-      RoleName: !Sub "${AWS::Region}-${BaseName}-lambda-store-role"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -842,12 +885,23 @@ Resources:
                 - !Sub "lambda.${AWS::URLSuffix}"
             Action:
               - sts:AssumeRole
-      PermissionsBoundary: !Ref LambdaPermissionBoundaryPolicy
       Policies:
-        - PolicyName: !Sub "${BaseNameTitleCase}StoreLambdaLogPolicy"
+        - PolicyName: !Sub "${BaseNameTitleCase}LogPolicy"
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - Effect: Allow
+                Sid: AllowLambdaStoreAgentBasicLogTraceAccess
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - xray:PutTelemetryRecords
+                  - xray:PutTraceSegments
+                Resource: !GetAtt "LambdaJobStoreLogGroup.Arn"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowLambdaStoreAgentDynamoDBAccess
                 Action:
@@ -858,9 +912,7 @@ Resources:
                 Resource: !GetAtt "JobAgentStoreTable.Arn"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
-      ManagedPolicyArns:
-        - !Ref JobAgentBaseLogAndTracePolicy
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -877,17 +929,32 @@ Resources:
       Code:
         S3Bucket: !Ref JobAgentBucket
         S3Key: lambdas/job_store.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        LogGroup: !Ref LambdaJobStoreLogGroup
+        SystemLogLevel: DEBUG
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  LambdaJobSenderLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BaseName}${LogGroupSuffix}/job-sender"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentLambdaSenderRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
     Properties:
-      RoleName: !Sub "${AWS::Region}-${BaseName}-lambda-sender-role"
-      PermissionsBoundary: !Ref LambdaPermissionBoundaryPolicy
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -895,13 +962,23 @@ Resources:
             Principal:
               Service: !Sub "lambda.${AWS::URLSuffix}"
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - !Ref JobAgentBaseLogAndTracePolicy
       Policies:
-        - PolicyName: !Sub "${BaseNameTitleCase}LambdaSenderPolicy"
+        - PolicyName: !Sub "${BaseNameTitleCase}LogPolicy"
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - Effect: Allow
+                Sid: AllowLambdaSenderAgentBasicLogTraceAccess
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                  - xray:PutTelemetryRecords
+                  - xray:PutTraceSegments
+                Resource: !GetAtt "LambdaJobSenderLogGroup.Arn"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowLambdaSenderAgentSQSAccess
                 Action:
@@ -912,7 +989,7 @@ Resources:
                 Resource: !GetAtt "JobQueue.Arn"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowLambdaSenderAgentSNSPubOnly
                 Action:
@@ -920,7 +997,7 @@ Resources:
                 Resource: !Ref "JobSubscriberTopic"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -937,11 +1014,28 @@ Resources:
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/job_sender.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        LogGroup: !Ref LambdaJobSenderLogGroup
+        SystemLogLevel: DEBUG
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  LambdaErrorHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${BaseName}${LogGroupSuffix}/error-handler"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   ErrorHandlerFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
@@ -953,17 +1047,32 @@ Resources:
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/error_handler.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        LogGroup: !Ref LambdaErrorHandlerLogGroup
+        SystemLogLevel: DEBUG
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  JobAgentStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/states/${BaseName}${LogGroupSuffix}/statelog"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentStateMachineExecutionRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
     Properties:
-      RoleName: !Sub "${AWS::Region}-${BaseName}-state-machine-execution-role"
-      PermissionsBoundary: !Ref StateMachinePermissionBoundaryPolicy
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -991,24 +1100,32 @@ Resources:
                 Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
                 Condition:
                   StringEquals:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowDeliveryAccess
                 Action:
-                  - "logs:*Delivery*"
-                  - "logs:*Deliveries*"
-                  - logs:PutResourcePolicy"
-                  - logs:DescribeLogGroups"
-                  - logs:DescribeLogStreams"
-                  - logs:CreateLogGroup"
-                  - logs:CreateLogStream"
-                  - logs:DeleteLogGroup"
-                  - logs:DeleteLogStream"
-                  - logs:PutLogEvents"
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DeleteSubscriptionFilter
+                  - logs:DescribeDestinations
+                  - logs:DescribeLogGroups
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeSubscriptionFilters
+                  - logs:FilterLogEvents
+                  - logs:GetLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutDeliverySource
+                  - logs:PutDestination
+                  - logs:PutLogEvents
+                  - logs:PutResourcePolicy
+                  - logs:PutSubscriptionFilter
+                  - logs:UpdateLogDelivery
+                  - logs:UpdateLogDelivery
                 Resource: "*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowStateMachineLambdaInvokeForJobAgent
                 Action:
@@ -1021,7 +1138,7 @@ Resources:
                   - !GetAtt "VarReplacerFunction.Arn"
                 Condition:
                   StringEquals:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowStateMachineSendSQSMessageOnly
                 Action:
@@ -1030,7 +1147,7 @@ Resources:
                   - !GetAtt "JobQueue.Arn"
                 Condition:
                   StringEquals:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowBasicS3AccessForStateMachine
                 Action:
@@ -1044,7 +1161,7 @@ Resources:
                   - !Sub "${JobAgentBucket.Arn}/templates/*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
               - Effect: Allow
                 Sid: AllowStateMachineXrayTracing
                 Action:
@@ -1055,7 +1172,7 @@ Resources:
                 Resource: "*"
                 Condition:
                   StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+                    "aws:ResourceTag/JobAlertsAgent": !Sub "aws:PrincipalTag/${TagKey}"
   JobAgentStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Condition: CreateChildStack
@@ -1074,6 +1191,14 @@ Resources:
         SNSJobSubscriberTopicArn: !Ref "JobSubscriberTopic"
         SNSJobSubscriberTopicName: !GetAtt "JobSubscriberTopic.TopicName"
       StateMachineType: STANDARD
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt "JobAgentStateMachineLogGroup.Arn"
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -1488,36 +1613,11 @@ Resources:
                 }
               }
             }
-  JobAgentStackResourceGroup:
-    Type: AWS::ResourceGroups::Group
-    Condition: CreateChildStack
-    DependsOn: JobAgentTriggerEvent
-    Properties:
-      Name: !Sub "${BaseName}-stack-resources-${HashSuffix}"
-      Description: !Sub "Stack resource group for the ${BaseName} stack"
-      ResourceQuery:
-        Type: CLOUDFORMATION_STACK_1_0
-      Tags:
-        - Key: !Ref "TagKey"
-          Value: !Ref TagKey
 
-  JobAgentApplicationInsights:
-    Type: AWS::ApplicationInsights::Application
-    Condition: GetInsights
-    Properties:
-      AutoConfigurationEnabled: true
-      CWEMonitorEnabled: true
-      OpsCenterEnabled: true
-      ResourceGroupName: !Ref JobAgentStackResourceGroup
-      Tags:
-        - Key: !Ref "TagKey"
-          Value: !Ref TagKey
-        - Key: !Sub "${BaseName}rsc_grp"
-          Value: app-resource
 Outputs:
   DeploymentRoleArn:
     Description: Arn for deployment role
-    Value: !GetAtt "JobAgentCFManagementRole.Arn"
+    Value: !GetAtt "JobAgentCFDeploymentRole.Arn"
   JobAgentS3Name:
     Description: Name of S3 bucket
     Value: !Ref "JobAgentBucket"
@@ -1538,7 +1638,3 @@ Outputs:
     Condition: CreateChildStack
     Description: Arn for the trigger event
     Value: !Ref JobAgentTriggerEvent
-  TopicArn:
-    Condition: CreateChildStack
-    Description: Arn for the subscription
-    Value: !Ref JobSubscriberTopic
