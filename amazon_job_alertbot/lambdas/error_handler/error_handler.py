@@ -107,12 +107,12 @@ def error_handler_handler(
 
     Args:
         event: The event dictionary containing the error information.
-        context: The context dictionary containing additional information.
+    context: The context object.
 
     Returns:
         dict[str, Any]: A dictionary with the response data, including the status code, action, and error details.
     """
-    logger.info(f"Error Handler invoked with event: {event}")
+    logger.info(f"Error Handler invoked with event: \n {event}")
     try:
         response = handle_error(event=event)
         logger.info(

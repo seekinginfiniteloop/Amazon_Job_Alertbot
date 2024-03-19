@@ -77,19 +77,9 @@ Parameters:
     Type: String
     Description: Name of the stack used for ApplicationInsights under CreateChildStack condition.
     Default: "none"
-  EnableInsights:
-    Type: String
-    Description: Sets the condition for turning on Application Insights after the stack has been created.
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
 Conditions:
   CreateChildStack: !Equals
     - !Ref "ChildEnabled"
-    - "true"
-  GetInsights: !Equals
-    - !Ref EnableInsights
     - "true"
 Transform: AWS::Serverless-2016-10-31
 Resources:
@@ -192,6 +182,7 @@ Resources:
               - s3:*
               - sns:*
               - sqs:*
+              - sts:*
               - xray:*
             Resource: "*"
   JobAgentCFManagementRole:
@@ -218,6 +209,12 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - Sid: CFManagerPolicy
+                Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - cloudtrail:*
+                Resource: "*"
               - Sid: ManageStackIAMRolesAndPolicies
                 Effect: Allow
                 Action:
@@ -571,6 +568,61 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  JobAgentCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: !Sub "${BaseNameTitleCase}Trail"
+      CloudWatchLogsLogGroupArn: !GetAtt "CloudTrailLogGroup.Arn"
+      CloudWatchLogsRoleArn: !GetAtt "JobAgentCloudTrailCloudWatchRole.Arn"
+      S3BucketName: !Ref JobAgentBucket
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: false
+      EnableLogFileValidation: true
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
+  JobAgentCloudTrailCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: !Sub "cloudtrail.${AWS::URLSuffix}"
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}TrailLogPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: AllowTrailAccessToLogDelivery
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt "CloudTrailLogGroup.Arn"
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentStoreTable:
     Type: AWS::DynamoDB::Table
     UpdateReplacePolicy: Retain
@@ -742,9 +794,6 @@ Resources:
               - xray:PutTraceSegments
               - xray:PutTelemetryRecords
             Resource: "*"
-            Condition:
-              StringEqualsIfExists:
-                "aws:ResourceTag/jobalertsagent": !Ref TagKey
   JobAgentTriggerEventRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -786,9 +835,15 @@ Resources:
     Condition: CreateChildStack
     Properties:
       FunctionName: !Sub "${BaseName}-var-replacer"
-      Handler: var_replacer.handler
+      Handler: var_replacer.var_replacer_handler
       Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
       Runtime: python3.11
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      TracingConfig:
+        Mode: Active
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/var_replacer.zip
@@ -797,6 +852,7 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   RequestsLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -815,9 +871,15 @@ Resources:
     Condition: CreateChildStack
     Properties:
       FunctionName: !Sub "${BaseName}-job-scraper"
-      Handler: job_scraper.handler
+      Handler: job_scraper.job_scraper_handler
       Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
       Runtime: python3.11
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      TracingConfig:
+        Mode: Active
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/job_scraper.zip
@@ -828,6 +890,7 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   JobAgentLambdaStoreRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -871,9 +934,15 @@ Resources:
     Condition: CreateChildStack
     Properties:
       FunctionName: !Sub "${BaseName}-job-store"
-      Handler: job_store.handler
+      Handler: job_store.job_store_handler
       Role: !GetAtt "JobAgentLambdaStoreRole.Arn"
       Runtime: python3.11
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      TracingConfig:
+        Mode: Active
       Code:
         S3Bucket: !Ref JobAgentBucket
         S3Key: lambdas/job_store.zip
@@ -882,6 +951,7 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   JobAgentLambdaSenderRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -926,30 +996,44 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   JobAgentSenderFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
     Properties:
       FunctionName: !Sub "${BaseName}-job-sender"
-      Handler: job_sender.handler
+      Handler: job_sender.job_sender_handler
       Role: !GetAtt "JobAgentLambdaSenderRole.Arn"
       Runtime: python3.11
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/job_sender.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      TracingConfig:
+        Mode: Active
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   ErrorHandlerFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
     Properties:
       FunctionName: !Sub "${BaseName}-error-handler"
-      Handler: error_handler.handler
+      Handler: error_handler.error_handler_handler
       Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
       Runtime: python3.11
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      TracingConfig:
+        Mode: Active
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/error_handler.zip
@@ -958,6 +1042,7 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+
   JobAgentStateMachineExecutionRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -987,7 +1072,14 @@ Resources:
               - Effect: Allow
                 Sid: AllowStateMachineExecution
                 Action:
+                  - states:CreateStateMachine
+                  - states:DescribeExecution
+                  - states:ListExecutions
+                  - states:ListStateMachines
                   - states:StartExecution
+                  - states:StopExecution
+                  - states:TagResource
+                  - states:UpdateStateMachine
                 Resource: !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${BaseNameTitleCase}-StateMachine"
                 Condition:
                   StringEquals:
@@ -995,20 +1087,30 @@ Resources:
               - Effect: Allow
                 Sid: AllowDeliveryAccess
                 Action:
-                  - "logs:*Delivery*"
-                  - "logs:*Deliveries*"
-                  - logs:PutResourcePolicy"
-                  - logs:DescribeLogGroups"
-                  - logs:DescribeLogStreams"
-                  - logs:CreateLogGroup"
-                  - logs:CreateLogStream"
-                  - logs:DeleteLogGroup"
-                  - logs:DeleteLogStream"
-                  - logs:PutLogEvents"
+                  - logs:CreateDelivery
+                  - logs:CreateLogDelivery
+                  - logs:CreateLogStream
+                  - logs:DeleteLogDelivery
+                  - logs:DescribeDeliveryDestinations
+                  - logs:DescribeDeliverySources
+                  - logs:DescribeLogDeliveries
+                  - logs:DescribeLogGroups
+                  - logs:DescribeResourcePolicies
+                  - logs:GetDelivery
+                  - logs:GetDeliveryDestination
+                  - logs:GetDeliveryDestinationPolicy
+                  - logs:GetDeliverySource
+                  - logs:GetLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:ListTagsForResource
+                  - logs:PutDeliveryDestination
+                  - logs:PutDeliveryDestinationPolicy
+                  - logs:PutDeliverySource
+                  - logs:PutLogEvents
+                  - logs:PutResourcePolicy
+                  - logs:TagResource
+                  - logs:UpdateLogDelivery
                 Resource: "*"
-                Condition:
-                  StringEqualsIfExists:
-                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
               - Effect: Allow
                 Sid: AllowStateMachineLambdaInvokeForJobAgent
                 Action:
@@ -1056,12 +1158,32 @@ Resources:
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
+  JobAgentStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      LogGroupName: !Sub "${BaseNameTitleCase}-StateMachine-LogGrp"
+      RetentionInDays: 14
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: log-resource
   JobAgentStateMachine:
     Type: AWS::StepFunctions::StateMachine
     Condition: CreateChildStack
     Properties:
       StateMachineName: !Sub "${BaseNameTitleCase}-StateMachine"
       RoleArn: !GetAtt "JobAgentStateMachineExecutionRole.Arn"
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt "JobAgentStateMachineLogGroup.Arn"
+        IncludeExecutionData: true
+        Level: ALL
+      TracingConfiguration:
+        Enabled: true
       DefinitionSubstitutions:
         JobAgentScraperFunctionArn: !GetAtt "JobAgentScraperFunction.Arn"
         JobAgentStoreFunctionArn: !GetAtt "JobAgentStoreFunction.Arn"
@@ -1088,7 +1210,8 @@ Resources:
               "Type": "Task",
               "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
               "Parameters": {
-                "FunctionName": "${VarReplacerFunctionArn}"
+                "FunctionName": "${VarReplacerFunctionArn}",
+                "Payload.$": "$"
               },
               "Retry": [
                 {
@@ -1391,7 +1514,6 @@ Resources:
             }
           }
         }
-
   JobAgentStateMachineLatestVer:
     Type: AWS::StepFunctions::StateMachineVersion
     Condition: CreateChildStack
@@ -1500,20 +1622,6 @@ Resources:
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
-
-  JobAgentApplicationInsights:
-    Type: AWS::ApplicationInsights::Application
-    Condition: GetInsights
-    Properties:
-      AutoConfigurationEnabled: true
-      CWEMonitorEnabled: true
-      OpsCenterEnabled: true
-      ResourceGroupName: !Ref JobAgentStackResourceGroup
-      Tags:
-        - Key: !Ref "TagKey"
-          Value: !Ref TagKey
-        - Key: !Sub "${BaseName}rsc_grp"
-          Value: app-resource
 Outputs:
   DeploymentRoleArn:
     Description: Arn for deployment role
@@ -1542,3 +1650,17 @@ Outputs:
     Condition: CreateChildStack
     Description: Arn for the subscription
     Value: !Ref JobSubscriberTopic
+  LambdaFuncs:
+    Condition: CreateChildStack
+    Description: Arns for the lambda functions
+    Value:
+      !Join [
+        ",",
+        [
+          !GetAtt VarReplacerFunction.Arn,
+          !GetAtt JobAgentScraperFunction.Arn,
+          !GetAtt JobAgentStoreFunction.Arn,
+          !GetAtt JobAgentSenderFunction.Arn,
+          !GetAtt ErrorHandlerFunction.Arn,
+        ],
+      ]

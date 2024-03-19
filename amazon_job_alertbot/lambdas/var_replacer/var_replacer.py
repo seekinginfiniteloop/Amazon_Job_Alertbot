@@ -7,7 +7,6 @@ from typing import Any
 logger: Logger = logging.getLogger(name="var_replacer")
 logger.setLevel(level="INFO")
 
-
 def parse_arn(arn: str) -> tuple[str, str, str]:
     """
     Parses an ARN (Amazon Resource Name) and extracts the region and account ID.
@@ -56,7 +55,7 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
 
     Args:
         event (dict): The event dictionary containing the variables to be replaced.
-        context (dict): The context dictionary containing additional information.
+        context (LambdaContext): The LambdaContext object containing additional information.
 
     Returns:
         dict[str, int | str | Any]: The modified event dictionary with variables
@@ -70,14 +69,14 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
         replacements["partition"],
         replacements["region"],
         replacements["account_id"],
-    ) = parse_arn(arn=context.get("invoked_function_arn"))
+    ) = parse_arn(arn=context.invoked_function_arn)
 
     event = recursive_replace(obj=event, replacements=replacements)
     logger.info("Finished replacing variables")
     return {
         "status_code": 200,
         "searchparams": event["detail"]["SearchSettings"],
-        "dbparams": event["Details"]["DBSettings"],
+        "dbparams": event["detail"]["DBSettings"],
         "sendparams": event["detail"]["SendSettings"],
     }
 
@@ -91,7 +90,7 @@ def var_replacer_handler(
     Args:
         Any: The modified event object after performing replacements.
     """
-    logger.info("Starting var_replacer Lambda")
+    logger.info(f"Starting var_replacer Lambda with event:\n{event}")
     try:
         return replace_vars(event=event, context=context)
 
@@ -101,7 +100,7 @@ def var_replacer_handler(
             "status_code": 500,
             "state": "ReplaceParams",
             "errorType": type(e).__name__,
-            "errorFunc": context.get("function_name"),
+            "errorFunc": context.function_name,
             "errorMessage": str(e),
             "stackTrace": traceback.format_exc(),
         }

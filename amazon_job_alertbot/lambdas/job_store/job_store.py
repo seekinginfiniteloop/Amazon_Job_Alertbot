@@ -27,9 +27,6 @@ def set_vars(event: dict[str, Any]) -> tuple[dict[Any] | int | Any | bool | date
         tuple: A tuple containing the jobs, remaining hits, table, a boolean value, and the newest scrape.
 
     """
-    if payload := event.get("Payload)"):
-        if payload.get("dbparams"):
-            event = payload
     db = boto3.resource("dynamodb")
     db_params = event.get("dbparams")
     table = db.Table(db_params["table"])
@@ -348,6 +345,16 @@ def keep_keys(new_jobs: list[dict[str, str | int | dict | list | None]]) -> list
         keepers.append(new)
 
 def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
+    """
+    Stores jobs in the database based on the provided event parameters.
+
+    Args:
+        event: A dictionary containing the event parameters.
+
+    Returns:
+        dict: A dictionary containing the status code, new/updated jobs, more jobs flag, and newest scrape date.
+
+    """
     jobs, remaining_hits, table, more_jobs, newest_scrape = set_vars(event=event)
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
         if (
@@ -385,7 +392,7 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
         None
     """
 
-    logger.info("job_store function execution started")
+    logger.info(f"job_store function execution started with event:\n {event}")
     try:
         return store_to_db(event=event)
 
@@ -395,7 +402,7 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
             "status_code": 500,
             "state": "InvokeJobStore",
             "errorType": type(e).__name__,
-            "errorFunc": context.get("function_name"),
+            "errorFunc": context.function_name,
             "errorMessage": str(e),
             "stackTrace": traceback.format_exc(),
         }

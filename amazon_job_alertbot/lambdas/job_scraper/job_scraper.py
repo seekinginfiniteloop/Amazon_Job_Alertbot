@@ -26,9 +26,6 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
         "newest_scrape" is returned instead.
 
     """
-    if payload := event.get("Payload)"):
-        if payload.get("searchparams"):
-            event = payload
     params = event.get("searchparams")
     params["criteria"]["offset"] = event.get("next_offset", 0)
     return params, event.get("remaining_hits"), event.get("newest_scrape")
@@ -253,8 +250,19 @@ def check_for_stop_signal(
 
 
 def scrape(
-    event: dict[str, Any], context: dict[str, Any]
+    event: dict[str, Any], context
 ) -> dict[str, int | list[dict[str, str | int | None]] | Any]:
+    """
+    Scrapes jobs based on the provided event parameters.
+
+    Args:
+        event: A dictionary containing the event parameters.
+        context: The context object.
+
+    Returns:
+        dict: A dictionary containing the scraped jobs, remaining hits, and next offset.
+
+    """
     stop_signal = False
     params, remaining_hits, limit_date = set_vars(event=event)
     data, remainder, next_offset = fetch_jobs(
@@ -304,7 +312,7 @@ def job_scraper_handler(
     Returns:
         dict containing list of jobs as dicts, remaining hits, and stop_signal.
     """
-    logger.info("Scrape function execution started")
+    logger.info(f"Scrape function execution started with event: \n {event}")
 
     try:
         return scrape(event=event, context=context)
@@ -314,7 +322,7 @@ def job_scraper_handler(
         return {
             "status_code": 500,
             "state": "InvokeJobScraper",
-            "errorFunc": context.get("function_name"),
+            "errorFunc": context.function_name,
             "errorType": type(e).__name__,
             "errorMessage": str(e),
             "stackTrace": traceback.format_exc(),

@@ -14,24 +14,28 @@ from typing import Any
 from urllib.parse import quote
 
 import boto3
+from boto3.resources import factory
+from botocore import client
 from botocore.exceptions import ClientError, WaiterError
 
-s3 = boto3.client("s3")
-s3r = boto3.resource("s3")
-cf = boto3.client("cloudformation")
-sts = boto3.client("sts")
-ec2 = boto3.client("ec2")
+s3: client = boto3.client("s3")
+s3r: factory = boto3.resource("s3")
+cf: client = boto3.client("cloudformation")
+sts: client = boto3.client("sts")
+ec2: client = boto3.client("ec2")
 session = boto3.session.Session()
 
 ParamDictType = dict[str, str | list[str | dict[str, str | None]] | bool | None]
 
+update_lambdas = False
 
-def parse_cli() -> argparse.Namespace | None:
+
+def parse_cli() -> dict[str, str]:
     """
     Parses command line arguments.
 
     Returns:
-        argparse.Namespace: The parsed arguments.
+        kwarg-style dictionary The parsed arguments.
     """
     parser = argparse.ArgumentParser(
         description="Deploy a child stack to the root stack."
@@ -91,7 +95,7 @@ def parse_cli() -> argparse.Namespace | None:
         help="create a new stack, ignoring existing stacks",
         dest="newstack",
     )
-    return parser.parse_args()
+    return vars(parser.parse_args())
 
 
 def gen_temp_s3(base_name: str, suffix: str) -> str:
@@ -187,7 +191,9 @@ def clean_unfinished(base_name: str) -> None:
                         break
 
 
-def assemble_params(args: argparse.Namespace) -> ParamDictType:
+def assemble_params(
+    args: dict[str, str],
+) -> ParamDictType:
     """
     Assembles parameters for the stack.
 
@@ -196,7 +202,6 @@ def assemble_params(args: argparse.Namespace) -> ParamDictType:
     Returns:
         dict: The assembled parameters.
     """
-    args = vars(args)
     base_name: str = args["basename"]
     clean_unfinished(base_name=base_name)
     components: list[str] = base_name.split("-")
@@ -255,12 +260,10 @@ def assemble_params(args: argparse.Namespace) -> ParamDictType:
         ]
         }
         """,
-        "Parameters": [
-            {"ParameterKey": k, "ParameterValue": parameters[k]} for k in param_keys
-        ],
+        "Parameters": [get_kv(k=k, v=parameters[k]) for k in param_keys],
         "Tags": [
-            {"Key": args["tagkey"].lower(), "Value": args["tagkey"].lower()},
-            {"Key": "StackName", "Value": f"{base_name}-root-stack"},
+            get_kv(k=args["tagkey"].lower(), v=args["tagkey"].lower(), prefix=""),
+            get_kv(k="StackName", v=f"{base_name}-root-stack", prefix=""),
         ],
         "DisableRollback": True,
         # "EnableTerminationProtection": True,
@@ -347,18 +350,17 @@ def gen_hash_suffix(base_name: str, newstack: bool = False) -> str:
                 len(stackname.split("-")[-1]) == 12
             ):
                 return (
-                    get_output_value(
-                        output=cf.describe_stacks(StackName=stackname)["Stacks"][0].get(
-                            "Outputs"
-                        ),
-                        key_value="Suffix",
+                    get_v_for_k(
+                        kv_list=stack.get("Outputs"),
+                        kval="Suffix",
+                        prefix="Output",
                     )
                     or stackname.split("-")[-1]
                 )
     return secrets.token_hex(6)
 
 
-def stack_name_matches(stack, base_name: str) -> Any | bool:
+def stack_name_matches(stack: dict[str, Any], base_name: str) -> Any | bool:
     """
     Checks if the stack name matches the base name, excluding the suffix and not marked for deletion.
 
@@ -460,7 +462,7 @@ def get_user_arns() -> str:
     return f"{root_arn},{user_arn}"
 
 
-def stack_exists(stack_name: str) -> bool | dict:
+def stack_exists(stack_name: str) -> bool | dict[str, Any]:
     """
     Checks if a parent stack with the specified name exists.
 
@@ -518,13 +520,13 @@ def await_response(stack_name: str, update: bool = False) -> None | Any:
         raise ValueError(f"Stack {val} failed: {e}") from e
 
 
-def deploy_cloud(cf_params: ParamDictType) -> None | list[dict[str, str]]:
+def deploy_cloud(params: ParamDictType) -> None | list[dict[str, str]]:
     """
     Deploys a CloudFormation stack using the specified parameters. If it already
     exists, updates the stack.
 
     Args:
-        cf_params: The parameters for creating the stack.
+        params: The parameters for creating the stack.
 
     Returns:
         returns stack outputs if any
@@ -532,15 +534,30 @@ def deploy_cloud(cf_params: ParamDictType) -> None | list[dict[str, str]]:
     """
 
     try:
-        cf.create_stack(**cf_params)
+        cf.create_stack(**params)
         print("Waiting for stack to be created...")
 
-        return await_response(stack_name=cf_params["StackName"])
+        return await_response(stack_name=params["StackName"])
 
     except ClientError as e:
         if e.response["Error"]["Code"] != "AlreadyExistsException":
             raise e
-        return update_stacks(cf_params=cf_params, update=True)
+        return update_stacks(params=params, update=True)
+
+
+def get_kv(k: str, v: str, prefix: str = "Parameter") -> dict[str, str | bool]:
+    """
+    Returns a dictionary containing the specified key-value pair.
+
+    Args:
+        k: The key of the parameter.
+        v: The value of the parameter.
+        prefix: Prefix for the key and value keys, defaults to "Parameter"
+
+    Returns:
+        dict: A dictionary containing the key-value pair.
+    """
+    return {f"{prefix}Key": k, f"{prefix}Value": v}
 
 
 def set_update_params(params: ParamDictType, stack: dict[str, Any], s3key: str) -> None:
@@ -555,9 +572,11 @@ def set_update_params(params: ParamDictType, stack: dict[str, Any], s3key: str) 
     Returns:
         None
     """
-    child_exists = get_output_value(output=stack["Outputs"], key_value="TriggerEvent")
-    bucket_name: str | None = get_output_value(
-        output=stack["Outputs"], key_value="JobAgentS3Name"
+    child_exists = get_v_for_k(
+        kv_list=stack["Outputs"], kval="TriggerEvent", prefix="Output"
+    )
+    bucket_name: str | None = get_v_for_k(
+        kv_list=stack["Outputs"], kval="JobAgentS3Name", prefix="Output"
     )
     params["TemplateURL"] = get_template_url(s3key=s3key, bucket=bucket_name)
 
@@ -574,23 +593,14 @@ def set_update_params(params: ParamDictType, stack: dict[str, Any], s3key: str) 
     pop_if_present(params=params, key="EnableTerminationProtection")
 
     params["DisableRollback"] = False
-    params["Parameters"].append(
-        {"ParameterKey": "ChildEnabled", "ParameterValue": "true"}
-    )
-    params
+    params["Parameters"].append(get_kv(k="ChildEnabled", v="true"))
     if child_exists:
         pop_if_present(params=params, key="TemplateBody")
         params["Tags"].append(
-            {
-                "Key": "AppManagerCFNStackKey",
-                "Value": cf.describe_stacks(StackName=params["StackName"])["Stacks"][
-                    0
-                ].get("StackId"),
-            }
+            get_kv(k="AppManagerCFNStackKey", v=stack.get("StackId"), prefix="")
         )
-        # params["RoleARN"] = get_output_value(
-        #    output=stack["Outputs"],
-        #    key_value="DeploymentRoleArn",
+        # params["RoleARN"] = get_v_for_k(
+        #    kv_list=stack["Outputs"], kval="DeploymentRoleArn", prefix="Output"
         # )
     return params
 
@@ -615,12 +625,12 @@ def pop_if_present(params: ParamDictType, key: str) -> None:
             break
 
 
-def update_stacks(cf_params: ParamDictType, s3key: str) -> None | list[dict[str, str]]:
+def update_stacks(params: ParamDictType, s3key: str) -> None | list[dict[str, str]]:
     """
     Updates the CloudFormation stack with the given parameters.
 
     Args:
-        cf_params: The parameters for updating the stack.
+        params: The parameters for updating the stack.
         s3key: key for the CF template
 
     Returns:
@@ -630,11 +640,11 @@ def update_stacks(cf_params: ParamDictType, s3key: str) -> None | list[dict[str,
         None
     """
     print("stack exists; updating stack...")
-    stack = cf.describe_stacks(StackName=cf_params["StackName"])["Stacks"][0]
-    set_update_params(params=cf_params, stack=stack, s3key=s3key)
+    stack = cf.describe_stacks(StackName=params["StackName"])["Stacks"][0]
+    set_update_params(params=params, stack=stack, s3key=s3key)
     try:
-        response = cf.update_stack(**cf_params)
-        return await_response(stack_name=cf_params["StackName"], update=True)
+        response = cf.update_stack(**params)
+        return await_response(stack_name=params["StackName"], update=True)
     except ClientError as e:
         if e.response["Error"]["Code"] != "ValidationError":
             raise e
@@ -660,21 +670,18 @@ def push_and_update(
     )
     for file in files:
         s3_key: str = file[0]
-        if s3_key.endswith(".yaml") and "root" in s3_key:
-            update_stacks(cf_params=root_params, s3key=s3_key)
+        if not s3_key.endswith(".zip"):
+            update_stacks(params=root_params, s3key=s3_key)
             break
 
 
-def push_objects(bucket: str, suffix: str) -> list[tuple[str, Path, str]]:
+def push_objects(bucket: str, suffix: str) -> None:
     """
     Pushes the specified files to the specified S3 destinations.
 
     Args:
         bucket (str): The name of the S3 bucket.
         suffix (str): The random hash suffix.
-
-    Returns:
-        list of tuples with values for s3_key, Path, and content-type of objects to upload
     """
     cwd: Path = Path.cwd()
     destinations = []
@@ -705,7 +712,6 @@ def push_objects(bucket: str, suffix: str) -> list[tuple[str, Path, str]]:
             )
             zip_obj: Path = zip_script(script_path=py_file)
             destinations.append((f"{lambda_s3}{zip_file}", zip_obj, "application/zip"))
-
     check_and_upload_to_s3(bucket=bucket, files=destinations)
     return destinations
 
@@ -744,22 +750,18 @@ def bucket_empty(bucket) -> bool:
     return not bucket.objects.all()
 
 
-def object_exists(bucket, s3_key: str) -> bool:
+def object_exists(s3object) -> bool:
     """
-    Checks if an object exists in the S3 bucket.
+    Checks if the S3 object exists.
 
     Args:
-        bucket: The Bucket object.
-        s3_key: The path to the object.
-
+        s3object: The S3 Object object.
     Returns:
         bool: True if the object exists, False otherwise.
     """
-    try:
-        return bool(bucket.Object(s3_key).load())
-    except ClientError as e:
-        print(f"Client error prevented object check, {e}")
-    return False
+    with contextlib.suppress(ClientError, AttributeError):
+        s3object.load()
+        return bool(s3object.key)
 
 
 def check_and_upload_to_s3(
@@ -770,38 +772,31 @@ def check_and_upload_to_s3(
 
     Args:
         bucket: The name of the S3 bucket.
-        files: A list of files to check and upload in the form, s3 keyname, local file path, and content type.
+        files: A list of files to check and upload in the form, s3 keyname, local Path object or BufferedReader, and content type.
     """
     s3bucket = s3r.Bucket(bucket)
-    if bucket_empty(bucket=s3bucket):
-        for file in files:
-            s3_key, file_obj, content_type = file
-            upload_to_s3(
-                bucket=bucket,
-                file_obj=file_obj,
-                s3_key=s3_key,
-                content_type=content_type,
-            )
-    else:
-        for file in files:
-            s3_key, file_obj, content_type = file
-            if object_exists(bucket=s3bucket, s3_key=s3_key):
-                s3object = s3bucket.Object(s3_key)
-                if is_different(file_obj=file_obj, s3object=s3object):
-                    upload_to_s3(
-                        bucket=bucket,
-                        file_obj=file_obj,
-                        s3_key=s3_key,
-                        content_type=content_type,
-                    )
-                    continue
-                continue
-            upload_to_s3(
-                bucket=bucket,
-                file_obj=file_obj,
-                s3_key=s3_key,
-                content_type=content_type,
-            )
+    for file in files:
+        s3_key, file_obj, content_type = file
+        s3obj = s3bucket.Object(s3_key)
+        upload_kwargs = {
+            "bucket": bucket,
+            "file_obj": file_obj,
+            "s3_key": s3_key,
+            "content_type": content_type,
+        }
+        if bucket_empty(bucket=s3bucket):
+            upload_to_s3(**upload_kwargs)
+        elif (existing_object := object_exists(s3object=s3obj)) and is_different(
+            file_obj=file_obj, s3object=s3obj
+        ):
+            upload_to_s3(**upload_kwargs)
+            if content_type == "application/zip" and not globals().get(
+                "update_lambdas"
+            ):
+                globals()["update_lambdas"] = True
+
+        elif not existing_object:
+            upload_to_s3(**upload_kwargs)
 
 
 def is_different(file_obj: Path | io.BufferedReader, s3object: str) -> bool:
@@ -810,18 +805,16 @@ def is_different(file_obj: Path | io.BufferedReader, s3object: str) -> bool:
 
     Args:
         file_obj (Path | BufferedReader): The path to the local file or the BytesIO BufferedReader object
-        s3object: The S3 object.
+        s3object: The S3 Object object.
 
     Returns:
         bool: True if the hash of the local file is different from the hash of the S3 object, False otherwise.
     """
-    try:
-        with contextlib.suppress(ClientError):
-            return get_hash_digest(file_obj=file_obj) != s3object.checksum.sha1.strip(
-                '"'
-            )
-    except Exception:
-        return False
+    with contextlib.suppress(ClientError, AttributeError):
+        s3object.load()
+        if object_sha := s3object.checksum_sha1:
+            return get_hash_digest(file_obj=file_obj) != object_sha.strip('"')
+    return True
 
 
 def get_hash_digest(file_obj: Path | io.BufferedReader, algo: str = "sha1") -> str:
@@ -835,10 +828,12 @@ def get_hash_digest(file_obj: Path | io.BufferedReader, algo: str = "sha1") -> s
         str: The base64-encoded hash digest of the file, decoded to utf-8.
 
     """
-    buff = file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+    buff: io.BufferedReader = (
+        file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+    )
     buff.seek(0)
     h = hashlib.new(name=algo, data=buff.read())
-    return base64.b64encode(h.digest()).decode('utf-8')
+    return base64.b64encode(h.digest()).decode("utf-8")
 
 
 def upload_to_s3(
@@ -860,16 +855,14 @@ def upload_to_s3(
         None
     """
     waiter = s3.get_waiter("object_exists")
-    args = vars(parse_cli())
+    args = parse_cli()
     tagkey: str = args["tagkey"].lower()
     now = datetime.now()
     print(
         f"File upload: bucket: {bucket}\n, file_obj: {file_obj}\n, content_type: {content_type}\n"
     )
-    body = (
-        file_obj.open(mode="rb")
-        if isinstance(file_obj, Path)
-        else file_obj
+    body: io.BufferedReader = (
+        file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
     )
     body.seek(0)
     sha_hash = get_hash_digest(file_obj=body)
@@ -880,7 +873,6 @@ def upload_to_s3(
         "Key": s3_key,
         "ContentMD5": get_hash_digest(file_obj=file_obj, algo="md5"),
         "ContentType": content_type,
-        "ChecksumAlgorithm": "SHA1",
         "ChecksumSHA1": get_hash_digest(file_obj=file_obj),
         "BucketKeyEnabled": True,
         "Tagging": quote(string=f"{tagkey}={tagkey}"),
@@ -893,50 +885,87 @@ def upload_to_s3(
         IfModifiedSince=now,
         WaiterConfig={"Delay": 2, "MaxAttempts": 6},
     )
-    if response.get("ResponseMetadata").get("HTTPStatusCode") == 200 and response.get("ResponseMetadata").get("ChecksumSHA1") == sha_hash:
+    if (
+        response.get("ResponseMetadata").get("HTTPStatusCode") == 200
+        and response.get("ResponseMetadata").get("ChecksumSHA1") == sha_hash
+    ):
         print(f"File uploaded to {bucket}/{s3_key} and checksum validated.\n\n")
 
-def get_output_value(output: list[dict[str, str]], key_value: str) -> str | None:
+
+def get_v_for_k(kv_list: list[dict[str, Any]], kval: str, prefix: str = "") -> Any:
     """
-    Returns the value associated with the given key in the output list of dictionaries.
+    Returns the next value for the given key in the dictionary list.
 
     Args:
-        output (list[dict[str, str]]): The list of dictionaries containing output information.
-        key_value (str): The key to search for in the dictionaries.
+        kv_list (list[dict[str, Any]]): The list of dictionaries containing
+            key-value pairs. Arranged in format:
+            {'Key': 'key_val, 'Value': 'value'}
+        kval (str): Name of the key to retrieve a value for.
+        prefix (str): The key prefix to append to keys 'Key' and 'Value'. Default is an empty string. For example, 'Parameter' will result in 'ParameterKey': 'key', 'ParameterValue': 'value'.
 
     Returns:
-        str | None: The value associated with the given key, or None if the key is not found.
+        Any: The next value for the given key, or None if the key is not found.
     """
     return next(
         (
-            result["OutputValue"]
-            for result in output
-            if result["OutputKey"] == key_value
+            kvdict.get(f"{prefix}Value")
+            for kvdict in kv_list
+            if kvdict.get(f"{prefix}Key") == kval
         ),
         None,
     )
 
 
-def cleanup(folder_path: Path) -> None:
+def cleanup() -> None:
     """
-    Deletes all zip files in the specified folder and its subfolders.
-
-    Args:
-        folder_path (Path): The path to the folder to be cleaned up.
-
-    Returns:
-        None
+    Deletes any temporarily created files.
 
     """
     folder_path = (
-        folder_path
-        if folder_path.exists()
-        and "lambdas" in [dir.name for dir in folder_path.iterdir() if dir.is_dir()]
+        Path.cwd()
+        if "templates" in [dir.name for dir in Path.cwd().iterdir() if dir.is_dir()]
         else reorient()
     )
-    zips = set(folder_path.glob(pattern="*.zip"))
-    for zip_file in zips:
-        os.remove(path=zip_file)
+    templates = set(folder_path.glob(pattern="*.yaml"))
+    for template in templates:
+        if template.stem.endswith("adjusted"):
+            os.remove(path=template)
+
+
+def update_lambda_functions(stack, bucket) -> None:
+    """
+    Updates the lambda functions in the specified stack.
+
+    Args:
+        stack (dict): The CloudFormation stack.
+        bucket (str): The name of the S3 bucket.
+
+    Returns:
+        None
+    """
+    lambda_arn_string: str = get_v_for_k(
+        kv_list=stack["Outputs"], kval="lambda_funcs", prefix="Output"
+    )
+    if not lambda_arn_string:
+        return
+    lambda_functions: list[str] = lambda_arn_string.split(",")
+    keys = [
+        f"lambdas/{name}"
+        for name in [
+            "var_replacer.zip",
+            "job_scraper.zip",
+            "job_store.zip",
+            "job_sender.zip",
+            "error_handler.zip",
+        ]
+    ]
+    l = boto3.client("lambda")
+    funcs = zip(lambda_functions, keys)
+    for func_arn, key in funcs:
+        l.update_function_code(
+            FunctionName=func_arn, S3Bucket=bucket, S3Key=key, Publish=True
+        )
+    print("Lambda functions updated.\n\n")
 
 
 def main() -> None:
@@ -953,35 +982,23 @@ def main() -> None:
     if Path.cwd() != correct_dir:
         os.chdir(path=correct_dir)
     root_template = get_template()
-    root_params = assemble_params(args=parse_cli())
+    cli_args = parse_cli()
+    root_params: ParamDictType = assemble_params(args=cli_args)
     params = root_params.get("Parameters")
     if (
-        tag_key := next(
-            (
-                param.get("ParameterValue")
-                for param in params
-                if param.get("ParameterKey") == "TagKey"
-            ),
-            None,
-        )
+        tag_key := get_v_for_k(kv_list=params, kval="TagKey", prefix="Parameter")
     ) != "jobalertsagent":
         root_template: Path = fix_tag_keys(tag_key=tag_key, template=root_template)
     root_stack_name = root_params.get("StackName")
-    suffix = next(
-        param.get("ParameterValue")
-        for param in params
-        if param.get("ParameterKey") == "HashSuffix"
-    )
-    base_name = next(
-        param.get("ParameterValue")
-        for param in params
-        if param.get("ParameterKey") == "BaseName"
-    )
+    suffix = get_v_for_k(kv_list=params, kval="HashSuffix", prefix="Parameter")
+    base_name = get_v_for_k(kv_list=params, kval="BaseName", prefix="Parameter")
 
     if stack := stack_exists(stack_name=root_stack_name):
-        if not vars(parse_cli).get("newstack"):
-            bucket = get_output_value(
-                output=stack.get("Outputs"), key_value="JobAgentS3Name"
+        if not cli_args.get("newstack"):
+            bucket = get_v_for_k(
+                kv_list=stack.get("Outputs"),
+                kval="JobAgentS3Name",
+                prefix="Output",
             )
     else:
         temp_bucket = gen_temp_s3(base_name=base_name, suffix=suffix).strip("/")
@@ -994,7 +1011,7 @@ def main() -> None:
         root_params["TemplateURL"] = get_template_url(
             s3key=f"build-temp-{root_template.name}", bucket=temp_bucket
         )
-        output = deploy_cloud(cf_params=root_params)
+        output = deploy_cloud(params=root_params)
         if (
             cf.describe_stacks(StackName=root_stack_name)["Stacks"][0].get(
                 "StackStatus"
@@ -1003,38 +1020,34 @@ def main() -> None:
         ):
             raise ValueError("Stack creation failed.")
         empty_and_delete_bucket(bucket_name=temp_bucket)
-        bucket = get_output_value(output=output, key_value="JobAgentS3Name")
+        bucket = get_v_for_k(kv_list=output, kval="JobAgentS3Name", prefix="Output")
     push_and_update(bucket=bucket, suffix=suffix, root_params=root_params)
     root_key = f"templates/cf-root-{suffix}.yaml"
     if stack := cf.describe_stacks(StackName=root_stack_name)["Stacks"][0]:
-        stack_params = stack.get("Parameters")
-        for param in stack_params:
-            if (
-                param.get("ParameterKey") == "ChildEnabled"
-                and param.get("ParameterValue") == "true"
-            ):
-                if not stack.get("RoleARN"):
-                    stack["Parameters"].append(
-                        {"ParameterKey": "EnableInsights", "ParameterValue": "true"}
-                    )
-                    update_stacks(cf_params=root_params, s3key=root_key)
-                    with contextlib.suppress(ClientError):
-                        response = boto3.client("sns").subscribe(
-                            TopicArn=get_output_value(
-                                output=stack.get("Outputs"), key_value="TopicArn"
-                            ),
-                            Protocol="email",
-                            Endpoint=vars(parse_cli()).get("youremail"),
-                            ReturnSubscriptionArn=True,
-                        )
-                        print(f"subscription arn: {response.get("SubscriptionArn")}")
-                    break
-                else:
-                    cleanup()
-                    exit()
+        if (
+            get_v_for_k(kv_list=stack["Outputs"], kval="ChildExists", prefix="Output")
+            == "true"
+        ):
+            update_stacks(params=root_params, s3key=root_key)
+            if update_lambdas:
+                update_lambda_functions(stack=stack, bucket=bucket)
+            with contextlib.suppress(ClientError):
+                response = boto3.client("sns").subscribe(
+                    TopicArn=get_v_for_k(
+                        kv_list=stack.get("Outputs"),
+                        kval="TopicArn",
+                        prefix="Output",
+                    ),
+                    Protocol="email",
+                    Endpoint=parse_cli().get("youremail"),
+                    ReturnSubscriptionArn=True,
+                )
+                print(f"subscription arn: {response.get("SubscriptionArn")}")
         else:
-            update_stacks(cf_params=root_params, s3key=root_key)
-    cleanup(folder_path=Path.cwd())
+            cleanup()
+    else:
+        update_stacks(params=root_params, s3key=root_key)
+    cleanup()
 
 
 if __name__ == "__main__":

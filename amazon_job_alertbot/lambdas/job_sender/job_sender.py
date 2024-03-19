@@ -230,9 +230,6 @@ def send_jobs(event: dict[str, Any]) -> dict[str, int]:
     Returns:
         dict[str, int]: A dictionary with the status code indicating the result of the job sending.
     """
-    if payload := event.get("Payload)"):
-        if payload.get("sendparams"):
-            event = payload
     params = event.get("sendparams", {})
     jobs = retrieve_queue(params=params)
     if messages_in_queue(queue_url=params["queue_url"]):
@@ -257,7 +254,7 @@ def job_sender_handler(
         dict with status and/or errors
     """
 
-    logger.info("Lambda Sender execution started")
+    logger.info(f"Lambda Sender execution started with event: \n {event}")
     try:
         return send_jobs(event=event)
 
@@ -267,7 +264,7 @@ def job_sender_handler(
             "status_code": 500,
             "state": "InvokeSender",
             "errorType": type(e).__name__,
-            "errorFunc": context.get("function_name"),
+            "errorFunc": context.function_name,
             "errorMessage": str(e),
             "stackTrace": traceback.format_exc(),
         }
