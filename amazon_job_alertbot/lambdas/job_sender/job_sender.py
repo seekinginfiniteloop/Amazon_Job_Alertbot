@@ -18,6 +18,24 @@ sqs = boto3.client("sqs")
 sns = boto3.client("sns")
 
 
+def get_data(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Retrieves a dictionary for key
+    from event.
+
+    Args:
+        event (dict[Any, Any]): A dictionary to parse.
+
+    Returns:
+        dict[Any, Any]: The parsed dictionary.
+
+    """
+    payload = event.get("Payload", {}) or event
+    return (payload.get("data", {}),)
+
+
 class Message:
     """
     Represents a message to be published to an SNS topic.
@@ -159,7 +177,7 @@ def retrieve_queue(params: dict[str, Any]) -> list[Any]:
     Returns:
         list: List of jobs retrieved from the queue.
     """
-    queue_url = params["queue_url"]
+    queue_url = params["sqs_queue_url"]
     jobs = []
     logger.info("Polling Amazon jobs SQS queue")
     while True:
@@ -230,21 +248,23 @@ def send_jobs(event: dict[str, Any]) -> dict[str, int]:
     Returns:
         dict[str, int]: A dictionary with the status code indicating the result of the job sending.
     """
-    params = event.get("sendparams", {})
+    data = get_data(event=event)
+    params = data.get("sendparams", {})
     jobs = retrieve_queue(params=params)
     if messages_in_queue(queue_url=params["queue_url"]):
         jobs.extend(retrieve_queue(params=params))
     purge_queue(queue_url=params["queue_url"])
     Message(jobs=jobs, params=params).publish()
     logger.info("Lambda Sender execution completed")
-    return {"status_code": 200}
+    return ({"status": {"statusCode": 200, "state": "InvokeJobSender"}},)
 
 
 def job_sender_handler(
     event: dict[str, Any], context: dict[str, Any]
 ) -> dict[str, int | str, dict[str, str]]:
     """
-    Lambda function handler that sends fetched jobs using SNS.
+    Lambda function handler that retrieves jobs from SQS and
+    sends fetched jobs using SNS.
 
     Args:
         event: The event data passed to the Lambda function.
@@ -259,12 +279,15 @@ def job_sender_handler(
         return send_jobs(event=event)
 
     except Exception as e:
-        logger.error(f"Error occurred in Lambda var_replacer: {str(e)}")
+        logger.error(f"Error occurred in Lambda var_replacer: {e}")
         return {
-            "status_code": 500,
-            "state": "InvokeSender",
-            "errorType": type(e).__name__,
-            "errorFunc": context.function_name,
-            "errorMessage": str(e),
-            "stackTrace": traceback.format_exc(),
+            "status": {
+                "statusCode": 500,
+                "state": "InvokeSender",
+                "errorType": type(e).__name__,
+                "errorFunc": context.function_name,
+                "errorMessage": str(e),
+                "stackTrace": traceback.format_exc(),
+            },
+            "data": get_data(event=event),
         }

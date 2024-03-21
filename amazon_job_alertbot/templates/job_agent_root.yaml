@@ -731,15 +731,21 @@ Resources:
     Type: AWS::SNS::Topic
     Condition: CreateChildStack
     Properties:
-      ContentBasedDeduplication: true
       DisplayName: AMZN Job Agent Report
-      FifoTopic: true
-      TopicName: !Sub "${BaseName}-topic.fifo"
+      FifoTopic: false
+      TopicName: !Sub "${BaseName}-topic"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
+  JobSubscriberSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: CreateChildStack
+    Properties:
+      Endpoint: !Ref YourEmail
+      Protocol: email
+      TopicArn: !Ref "JobSubscriberTopic"
   JobSubscriberTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Condition: CreateChildStack
@@ -852,7 +858,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   RequestsLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
@@ -890,7 +895,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   JobAgentLambdaStoreRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -951,7 +955,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   JobAgentLambdaSenderRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -996,7 +999,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   JobAgentSenderFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
@@ -1019,7 +1021,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   ErrorHandlerFunction:
     Type: AWS::Lambda::Function
     Condition: CreateChildStack
@@ -1042,7 +1043,6 @@ Resources:
           Value: !Ref TagKey
         - Key: !Sub "${BaseName}rsc_grp"
           Value: app-resource
-
   JobAgentStateMachineExecutionRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -1209,9 +1209,17 @@ Resources:
             "ReplaceParams": {
               "Type": "Task",
               "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "InputPath": "$.detail",
               "Parameters": {
                 "FunctionName": "${VarReplacerFunctionArn}",
-                "Payload.$": "$"
+                "Payload": {
+                  "data": {
+                    "replacements.$": "$.replacements",
+                    "sendparams.$": "$.SendSettings",
+                    "searchparams.$": "$.SearchSettings",
+                    "dbparams.$": "$.DBSettings"
+                  }
+                }
               },
               "Retry": [
                 {
@@ -1234,7 +1242,26 @@ Resources:
                   "Next": "HandleError"
                 }
               ],
-              "Next": "InvokeJobScraper"
+              "ResultSelector": {
+                "desiredOutput": {
+                  "data.$": "$.output.Payload.data",
+                  "status.$": "$.output.Payload.status"
+                }
+              },
+              "ResultPath": "$.params",
+              "OutputPath": "$.params.desiredOutput",
+              "Next": "DecideIfError"
+            },
+            "DecideIfError": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "PassToErrorHandler"
+                }
+              ],
+              "Default": "InvokeJobScraper"
             },
             "InvokeJobScraper": {
               "Type": "Task",
@@ -1264,32 +1291,52 @@ Resources:
                   "Next": "HandleError"
                 }
               ],
+              "ResultSelector": {
+                "scrapeOutput": {
+                  "data.$": "$.output.Payload.data",
+                  "status.$": "$.output.Payload.status"
+                }
+              },
               "ResultPath": "$.ScraperResult",
+              "OutputPath": "$.ScraperResult.scrapeOutput",
               "Next": "EvalScrapeResponse"
             },
             "EvalScrapeResponse": {
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.ScraperResult.jobs",
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "PassToErrorHandler"
+                },
+                {
+                  "Variable": "$.data.jobs",
                   "IsPresent": true,
-                  "Next": "InvokeJobStore"
+                  "Next": "PassToStore"
                 }
               ],
               "Default": "EndState"
+            },
+            "PassToStore": {
+              "Type": "Pass",
+              "Parameters": {
+                "tableInfo": {
+                  "tablename": "${JobAgentStoreTableName}",
+                  "tablearn": "${JobAgentStoreTableArn}"
+                }
+              },
+              "Result": {
+                "data.$": "States.JsonMerge($.data, $.tableInfo, false)",
+                "status.$": "$.status"
+              },
+              "Next": "InvokeJobStore"
             },
             "InvokeJobStore": {
               "Type": "Task",
               "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentStoreFunctionArn}",
-                "Payload": {
-                  "dbparams": "$.dbparams",
-                  "jobs.$": "$.ScraperResult.jobs",
-                  "remaining_hits.$": "$.ScraperResult.remaining_hits",
-                  "tablename": "${JobAgentStoreTableName}",
-                  "tablearn": "${JobAgentStoreTableArn}"
-                }
+                "Payload.$": "$"
               },
               "Retry": [
                 {
@@ -1312,14 +1359,26 @@ Resources:
                   "Next": "HandleError"
                 }
               ],
-              "ResultPath": "$.StoreResult",
+              "ResultSelector": {
+                "results": {
+                  "status.$": "$.output.Payload.status",
+                  "data.$": "$.output.Payload.data"
+                }
+              },
+              "ResultPath": "$.params",
+              "OutputPath": "$.params.results",
               "Next": "CheckForJobs"
             },
             "CheckForJobs": {
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.StoreResult.new_jobs",
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "PassToErrorHandler"
+                },
+                {
+                  "Variable": "$.data.new_jobs",
                   "IsPresent": true,
                   "Next": "SplitBranch"
                 }
@@ -1337,16 +1396,11 @@ Resources:
                       "Resource": "arn:aws:states:::aws-sdk:sqs:sendMessage",
                       "Parameters": {
                         "QueueUrl": "${JobQueueUrl}",
-                        "MessageBody.$": "$.StoreResult.new_jobs"
+                        "MessageBody.$": "$.data.new_jobs"
                       },
                       "Retry": [
                         {
-                          "ErrorEquals": [
-                            "Lambda.ClientExecutionTimeoutException",
-                            "Lambda.ServiceException",
-                            "Lambda.AWSLambdaException",
-                            "Lambda.SdkClientException"
-                          ],
+                          "ErrorEquals": ["States.ALL"],
                           "IntervalSeconds": 3,
                           "MaxAttempts": 6,
                           "BackoffRate": 2
@@ -1364,45 +1418,45 @@ Resources:
               "Type": "Choice",
               "Choices": [
                 {
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "PassToErrorHandler"
+                },
+                {
                   "And": [
                     {
-                      "Variable": "$.StoreResult.remaining_hits",
+                      "Variable": "$.data.remaining_hits",
                       "NumericGreaterThan": 0
                     },
                     {
-                      "Variable": "$.StoreResult.more_jobs",
+                      "Variable": "$.data.more_jobs",
                       "BooleanEquals": true
                     },
                     {
-                      "Variable": "$.StoreResult.newest_scrape",
+                      "Variable": "$.data.newest_scrape",
                       "IsPresent": true
                     }
                   ],
-                  "Next": "PassBackToInvoke"
+                  "Next": "InvokeJobScraper"
                 },
                 {
-                  "Variable": "$.StoreResult.more_jobs",
+                  "Variable": "$.data.more_jobs",
                   "BooleanEquals": false,
                   "Next": "PassToSender"
                 }
               ],
               "Default": "EndState"
             },
-            "PassBackToInvoke": {
-              "Type": "Pass",
-              "Parameters": {
-                "searchparams.$": "$.searchparams",
-                "dbparams.$": "$.dbparams",
-                "sendparams.$": "$.sendparams",
-                "remaining_hits.$": "$.StoreResult.remaining_hits",
-                "newest_scrape.$": "$.StoreResult.newest_scrape"
-              },
-              "Next": "InvokeJobScraper"
-            },
             "PassToSender": {
               "Type": "Pass",
               "Parameters": {
-                "sendparams": "$.sendparams"
+                "snsInfo": {
+                  "snstopic": "${SNSJobSubscriberTopicName}",
+                  "snstopicarn": "${SNSJobSubscriberTopicArn}"
+                }
+              },
+              "Result": {
+                "data.$": "States.JsonMerge($.data, $.snsInfo, false)"
               },
               "Next": "InvokeSender"
             },
@@ -1411,12 +1465,7 @@ Resources:
               "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentSenderFunctionArn}",
-                "InvocationType": "RequestResponse",
-                "Payload": {
-                "sendparams": "$.sendparams",
-                "snstopic": "${SNSJobSubscriberTopicName}",
-                "snstopicarn": "${SNSJobSubscriberTopicArn}"
-                }
+                "Payload.$": "$"
               },
               "Retry": [
                 {
@@ -1439,16 +1488,43 @@ Resources:
                   "Next": "HandleError"
                 }
               ],
-              "Next": "EndState"
+              "Next": "DecideOnSendResponse"
+            },
+            "DecideOnSendResponse": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "PassToErrorHandler"
+                }
+              ],
+              "Default": "EndState"
+            },
+            "PassToErrorHandler": {
+              "Type": "Pass",
+              "ResultPath": "$.errorInfo",
+              "Next":"HandleError"
             },
             "HandleError": {
               "Type": "Task",
               "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
               "Parameters": {
                 "FunctionName": "${ErrorHandlerFunctionArn}",
-                "Payload.$": "$",
-                "errorInfo.$": "$.errorInfo"
+                "Payload": {
+                  "status.$": "$errorInfo.output.Payload.status",
+                  "data.$": "$errorInfo.output.Payload.data",
+                  "cause.$": "$errorInfo.Cause"
+                }
               },
+              "ResultSelector": {
+                "outcome": {
+                  "status.$": "$.output.Payload.status",
+                  "data.$": "$.output.Payload.data"
+                }
+              },
+              "ResultPath": "$.errorResult",
+              "OutputPath": "$.errorResult.outcome",
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],
@@ -1461,13 +1537,18 @@ Resources:
               "Type": "Choice",
               "Choices": [
                 {
+                  "Variable": "$.status.statusCode",
+                  "NumericEquals": 500,
+                  "Next": "FailedExecution"
+                },
+                {
                   "And": [
                     {
-                      "Variable": "$.status_code",
+                      "Variable": "$.status.statusCode",
                       "NumericEquals": 200
                     },
                     {
-                      "Variable": "$.error_resend",
+                      "Variable": "$.status.error_resend",
                       "IsPresent": false
                     }
                   ],
@@ -1479,9 +1560,14 @@ Resources:
             "SetErrorResend": {
               "Type": "Pass",
               "Parameters": {
-                "error_resend": true,
-                "errorInfo_firstrun": "$.errorInfo",
-                "Payload": "$"
+                "newErrorInfo": {
+                  "error_resend": true,
+                  "errorInfo_firstrun.$": "$.status"
+                }
+              },
+              "Result": {
+                "data.$": "$.data",
+                "status.$": "$.newErrorInfo"
               },
               "Next": "RouteRetry"
             },
@@ -1489,17 +1575,22 @@ Resources:
               "Type": "Choice",
               "Choices": [
                 {
-                  "Variable": "$.state",
+                  "Variable": "$.status.errorInfo_firstrun.state",
+                  "StringEquals": "ReplaceParams",
+                  "Next": "ReplaceParams"
+                },
+                {
+                  "Variable": "$.status.errorInfo_firstrun.state",
                   "StringEquals": "InvokeJobScraper",
                   "Next": "InvokeJobScraper"
                 },
                 {
-                  "Variable": "$.state",
+                  "Variable": "$.status.errorInfo_firstrun.state",
                   "StringEquals": "InvokeJobStore",
                   "Next": "InvokeJobStore"
                 },
                 {
-                  "Variable": "$.state",
+                  "Variable": "$.status.errorInfo_firstrun.state",
                   "StringEquals": "InvokeSender",
                   "Next": "InvokeSender"
                 }
@@ -1524,6 +1615,8 @@ Resources:
   JobAgentTriggerEvent:
     Type: AWS::Events::Rule
     Condition: CreateChildStack
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
     Properties:
       Name: !Sub "${BaseName}-trigger-event"
       Description:
@@ -1546,6 +1639,7 @@ Resources:
                   "criteria": {
                     "offset": 0,
                     "result_limit": 10,
+                    "next_offset": 0,
                     "sort": "recent",
                     "latitude": "",
                     "longitude": "",

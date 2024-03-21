@@ -138,9 +138,9 @@ def fetch_job_data(
     """
 
     response: Response = session.get(url=url, headers=headers)
-    if response.status_code != 200:
+    if response.StatusCode != 200:
         logger.error(
-            f"Error: Received status code {response.status_code} from the server."
+            f"Error: Received status code {response.StatusCode} from the server."
         )
         return None
 
@@ -245,7 +245,7 @@ def lambda_handler(
     else:
         logger.info("Scrape found no new jobs, informing state machine")
     return {
-        "status_code": 200,
+        "StatusCode": 200,
         "jobs": jobs,
         "remaining_hits": remainder,
         "next_offset": next_offset,

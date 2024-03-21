@@ -8,7 +8,6 @@ from typing import Any, Literal
 import boto3
 from botocore.exceptions import ClientError
 
-
 logger = logging.getLogger(name="amzn_job_store")
 logger.setLevel(level="DEBUG")
 
@@ -16,7 +15,28 @@ logger.setLevel(level="DEBUG")
 today = datetime.now(timezone.utc).date()
 today_str: str = today.isoformat()
 
-def set_vars(event: dict[str, Any]) -> tuple[dict[Any] | int | Any | bool | datetime.date | None]:
+
+def get_data(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Retrieves a dictionary for key
+    from event.
+
+    Args:
+        event (dict[Any, Any]): A dictionary to parse.
+
+    Returns:
+        dict[Any, Any]: The parsed dictionary.
+
+    """
+    payload = event.get("Payload", {}) or event
+    return (payload.get("data", {}),)
+
+
+def set_vars(
+    event: dict[str, Any],
+) -> tuple[dict[str, Any] | int | Any | bool | datetime | None]:
     """
     Set the variables based on the provided event.
 
@@ -28,9 +48,16 @@ def set_vars(event: dict[str, Any]) -> tuple[dict[Any] | int | Any | bool | date
 
     """
     db = boto3.resource("dynamodb")
-    db_params = event.get("dbparams")
-    table = db.Table(db_params["table"])
-    return event.get("jobs", []), event.get("remaining_hits", 0), table, False, event.get("newest_scrape", find_newest_scrape(table=table))
+    data: dict[str, Any] = get_data(event)
+
+    table = db.Table(data.get("tablename", ""))
+    return (
+        data.get("jobs", []),
+        data.get("remaining_hits", 0),
+        table,
+        False,
+        data.get("newest_scrape", find_newest_scrape(table=table)),
+    )
 
 
 def scan_all_items(table_name: str, key_to_check: str) -> list[Any]:
@@ -44,12 +71,14 @@ def scan_all_items(table_name: str, key_to_check: str) -> list[Any]:
     Returns:
         list[Any]: A list of items scanned from the table.
     """
-    dynamodb = boto3.client('dynamodb')
-    paginator = dynamodb.get_paginator('scan')
+    dynamodb = boto3.client("dynamodb")
+    paginator = dynamodb.get_paginator("scan")
 
     all_items = []
-    for page in paginator.paginate(TableName=table_name, ProjectionExpression=key_to_check):
-        all_items.extend(page.get('Items', []))
+    for page in paginator.paginate(
+        TableName=table_name, ProjectionExpression=key_to_check
+    ):
+        all_items.extend(page.get("Items", []))
 
     return all_items
 
@@ -74,10 +103,10 @@ def compare_strings(old_string: str, new_string: str, context: int) -> str | Non
     new: list[str] = new_string.splitlines(keepends=True)
     d = difflib.HtmlDiff(wrapcolumn=80)
     return d.make_table(
-        from_lines=old,
-        to_lines=new,
+        fromlines=old,
+        tolines=new,
         fromdesc="Old Ad",
-        to_desc="New Ad",
+        todesc="New Ad",
         context=True,
         numlines=context,
     )
@@ -160,6 +189,7 @@ def get_status(
         logger.exception(e.response["Error"]["Message"])
     return None
 
+
 def stringify_dates(job: dict[str, Any]) -> dict[str, Any]:
     """
     Convert all date fields to strings.
@@ -176,6 +206,7 @@ def stringify_dates(job: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, datetime):
             job[key] = value.isoformat()
     return job
+
 
 def store_job(job: dict[str, Any], table) -> None:
     """
@@ -200,7 +231,7 @@ def store_job(job: dict[str, Any], table) -> None:
         logger.exception(e.response["Error"]["Message"])
 
 
-def set_dates(job: dict[str, Any]) -> datetime.date:
+def set_dates(job: dict[str, Any]) -> datetime:
     """
     Sets the dates for a job.
 
@@ -213,7 +244,11 @@ def set_dates(job: dict[str, Any]) -> datetime.date:
 
     posted_date: datetime = parse_date(job["posted_date"])
     if updated_time_str := job.get("updated_time"):
-        updated_time = int(updated_time_str.replace(" days", "").strip()) if (updated_time_str.endswith("days") or updated_time_str.endswith("day")) else 0
+        updated_time = (
+            int(updated_time_str.replace(" days", "").strip())
+            if (updated_time_str.endswith("days") or updated_time_str.endswith("day"))
+            else 0
+        )
         last_updated = datetime.now(timezone.utc).date() - timedelta(days=updated_time)
         return posted_date, last_updated, today
     return posted_date, posted_date, today
@@ -239,7 +274,9 @@ def parse_date(date_str: str) -> datetime:
     raise ValueError(f"Date string {date_str} is not in an expected format")
 
 
-def update_and_store_jobs(data: dict[str, str | int | dict | list], table) -> list[dict[str, str | int | dict | list | None]] | None:
+def update_and_store_jobs(
+    data: dict[str, str | int | dict | list], table
+) -> list[dict[str, str | int | dict | list | None]] | None:
     """
     Extract and store the jobs from the provided data into the specified table.
     The function retrieves the last scrape time from the table and iterates over each
@@ -273,9 +310,10 @@ def update_and_store_jobs(data: dict[str, str | int | dict | list], table) -> li
                     job["changes"] = changes
                     store_job(job=job, table=table)
                     new_or_updated_jobs.append(
-                        table.get_item(Key={"id_icims": job['id_icims']})
+                        table.get_item(Key={"id_icims": job["id_icims"]})
                     )
     return new_or_updated_jobs
+
 
 def find_newest_scrape(table) -> datetime:
     """
@@ -293,24 +331,25 @@ def find_newest_scrape(table) -> datetime:
     Returns:
         datetime: The capture limit.
     """
-    has_data = table.scan(ProjectionExpression= 'id_icims', Limit=1):
-        if not 'Items' in has_data or len(has_data['Items']) == 0:
-            return today - timedelta(days = 540)
+    if has_data := table.scan(ProjectionExpression="id_icims", Limit=1):
+        if "Items" not in has_data:
+            return today - timedelta(days=540)
 
         response = table.scan(
-        IndexName='last_scrape-index',
-        ProjectionExpression='last_scrape',
-        ScanIndexForward=False,  # False for descending order
-        Limit=1
-    )
+            IndexName="last_scrape-index",
+            ProjectionExpression="last_scrape",
+            ScanIndexForward=False,  # False for descending order
+            Limit=1,
+        )
 
-    items = response.get('Items', [])
-    if not items:
-        return today - timedelta(days = 540)
+    if items := response.get("Items", []):
+        return datetime.fromisoformat(items[0]["last_scrape"]).date()
+    return today - timedelta(days=540)
 
-    return datetime.fromisoformat(items[0]['last_scrape']).date()
 
-def keep_keys(new_jobs: list[dict[str, str | int | dict | list | None]]) -> list[dict[str, str | int | dict | list | None]]
+def keep_keys(
+    new_jobs: list[dict[str, str | int | dict | list | None]],
+) -> list[dict[str, str | int | dict | list | None]]:
     """
     Filters the given list of new jobs and keeps only the specified keys in each job dictionary.
 
@@ -344,6 +383,7 @@ def keep_keys(new_jobs: list[dict[str, str | int | dict | list | None]]) -> list
         }
         keepers.append(new)
 
+
 def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     """
     Stores jobs in the database based on the provided event parameters.
@@ -359,14 +399,13 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
         if (
             len(new_jobs) == len(jobs)
-            or min(
-                datetime.fromisoformat(date)
-                for date in new_jobs["last_updated"]
-            )
+            or min(datetime.fromisoformat(date) for date in new_jobs["last_updated"])
             >= newest_scrape
         ) and remaining_hits:
             more_jobs = True
-            logger.info("Either all results were new/updated or last_updated date precedes earliest scraped date. Sending signal to get more jobs.")
+            logger.info(
+                "Either all results were new/updated or last_updated date precedes earliest scraped date. Sending signal to get more jobs."
+            )
         if not more_jobs:
             logger.info(
                 "All available new/updated jobs have been stored in the database"
@@ -374,11 +413,39 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
         logger.info(
             f"Job Store execution completed. New/updated jobs stored in database: {len(new_jobs)} stored or updated"
         )
-        return {"status_code": 200, "new_jobs": keep_keys(new_jobs=new_jobs), "more_jobs": more_jobs, "newest_scrape": newest_scrape}
+
+        return {
+            "status": {"statusCode": 200, "state": "InvokeJobStore"},
+            "data": {
+                "new_jobs": new_jobs,
+                "more_jobs": more_jobs,
+                "newest_scrape": newest_scrape,
+                "remaining_hits": remaining_hits,
+            }
+            | {
+                k: v
+                for k, v in get_data(event=event).items()
+                if k not in ["new_jobs", "more_jobs", "remaining_hits", "newest_scrape"]
+            },
+        }
     logger.info(
         "Job Store function execution completed. No new/updated jobs found, informing state machine."
     )
-    return {"status_code": 200, "new_jobs": [], "more_jobs": more_jobs, "newest_scrape": None}
+    return {
+        "status": {"statusCode": 200, "state": "InvokeJobStore"},
+        "data": {
+            "new_jobs": [],
+            "more_jobs": more_jobs,
+            "newest_scrape": None,
+            "remaining_hits": 0,
+        }
+        | {
+            k: v
+            for k, v in get_data(event=event).items()
+            if k not in ["new_jobs", "more_jobs", "remaining_hits", "newest_scrape"]
+        },
+    }
+
 
 def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
     """
@@ -398,11 +465,15 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
 
     except Exception as e:
         logger.error(f"Error occurred in Lambda var_replacer: {str(e)}")
+
         return {
-            "status_code": 500,
-            "state": "InvokeJobStore",
-            "errorType": type(e).__name__,
-            "errorFunc": context.function_name,
-            "errorMessage": str(e),
-            "stackTrace": traceback.format_exc(),
+            "status": {
+                "statusCode": 500,
+                "state": "InvokeJobScraper",
+                "errorFunc": context.function_name,
+                "errorType": type(e).__name__,
+                "errorMessage": str(e),
+                "stackTrace": traceback.format_exc(),
+            },
+            "data": get_data(event=event),
         }

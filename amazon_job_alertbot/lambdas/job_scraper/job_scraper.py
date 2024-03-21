@@ -12,6 +12,24 @@ logger: Logger = logging.getLogger(name="job_scraper")
 logger.setLevel(level="DEBUG")
 
 
+def get_data(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Retrieves a dictionary for key
+    from event.
+
+    Args:
+        event (dict[Any, Any]): A dictionary to parse.
+
+    Returns:
+        dict[Any, Any]: The parsed dictionary.
+
+    """
+    payload = event.get("Payload", {}) or event
+    return (payload.get("data", {}),)
+
+
 def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     """
     Sets the variables based on the given event dictionary.
@@ -26,15 +44,18 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
         "newest_scrape" is returned instead.
 
     """
-    params = event.get("searchparams")
-    params["criteria"]["offset"] = event.get("next_offset", 0)
-    return params, event.get("remaining_hits"), event.get("newest_scrape")
+    data = get_data(event)
+    params = data.get("searchparams", {})
+    logger.info(f"params: {params}")
+    remaining_hits = data.get("remaining_hits")
+    newest_scrape = data.get("newest_scrape")
+    return params, remaining_hits, newest_scrape
 
 
 def process_string(string: str) -> str:
     """
-    Processes a string by removing leading and trailing whitespace and replacing
-    space with a plus sign.
+    Processes a string by removing leading and trailing whitespace
+    and replacing space with a plus sign.
 
     :param string: String to be processed.
     :return: Processed string.
@@ -106,6 +127,7 @@ def set_params(
     Returns:
         A tuple containing the search parameters with default values set.
     """
+    logger.info(f"search_params: {search_params}")
     lang_code = search_params.get("lang_code", "en")
     facets = search_params.get("facets", {})
     criteria = search_params.get("criteria", {})
@@ -132,19 +154,28 @@ def fetch_job_data(
         The fetched job data as a JSON object, or None if there was an error.
 
     """
-
-    response: Response = session.get(url=url, headers=headers)
-    if response.status_code != 200:
-        logger.error(
-            f"Error: Received status code {response.status_code} from the server."
-        )
-        return None
-
     try:
-        return response.json(strict=False)
-    except ValueError as e:
-        logger.exception(f"Error: Unable to parse JSON response. {e}")
-        return None
+        response: Response = session.get(url=url, headers=headers, timeout=30)
+        if response.StatusCode != 200:
+            logger.error(
+                f"Error: Received status code {response.StatusCode} from the server."
+            )
+        try:
+            return response.json(strict=False)
+        except ValueError as e:
+            logger.exception(f"Error: Unable to parse JSON response. {e}")
+            return None
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        logger.exception(
+            f"Error: Connection or timeout error. Routing to handler for retry: {e}"
+        )
+        return {e}
+    except requests.exceptions.RequestException as e:
+        logger.exception(f"Error: Unexpected error. {e}")
+        raise e
+
+    finally:
+        session.close()
 
 
 def fetch_jobs(
@@ -182,23 +213,30 @@ def fetch_jobs(
         search_params=search_params
     )
     logger.info(f"Establishing session with {base_url}")
-    session.get(url=base_url, headers=init_headers)
-    search_url: str = gen_search_url(
-        url=f"{base_url}/search.json", facets=facets, criteria=criteria
-    )
-    all_jobs = []
-    if data := fetch_job_data(url=search_url, session=session, headers=headers):
-        remainder: int = max(
-            remaining_hits - int(criteria["result_limit"])
-            if remaining_hits
-            else (int(data["hits"]) - len(data)),
-            0,
+    try:
+        session.get(url=base_url, headers=init_headers)
+        search_url: str = gen_search_url(
+            url=f"{base_url}/search.json", facets=facets, criteria=criteria
         )
-        all_jobs.extend(data["jobs"])
-    return all_jobs, remainder, (criteria["offset"] + criteria["result_limit"])
+        all_jobs = []
+        if data := fetch_job_data(url=search_url, session=session, headers=headers):
+            if isinstance(data, Exception):
+                return data, None, None
+
+            remainder: int = max(
+                remaining_hits - int(criteria["result_limit"])
+                if remaining_hits
+                else (int(data["hits"]) - len(data)),
+                0,
+            )
+            all_jobs.extend(data["jobs"])
+        return all_jobs, remainder, (criteria["offset"] + criteria["result_limit"])
+
+    finally:
+        session.close()
 
 
-def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
+def get_date_updated(job: dict[str, str | int | None]) -> datetime:
     """
     Gets the date updated for the job if present, else sets it to the posted date.
 
@@ -224,7 +262,7 @@ def get_date_updated(job: dict[str, str | int | None]) -> datetime.date:
 def check_for_stop_signal(
     data: list[dict[str, str | int | None]],
     remaining_hits: int = 0,
-    limit_date: datetime.date | None = None,
+    limit_date: datetime | None = None,
 ) -> bool:
     """
     Checks if the stop signal should be set based on the provided data, remaining hits, and limit date.
@@ -268,6 +306,21 @@ def scrape(
     data, remainder, next_offset = fetch_jobs(
         search_params=params, remaining_hits=remaining_hits
     )
+    if isinstance(
+        data, (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError)
+    ):
+        return {
+            "status": {
+                "statusCode": 500,
+                "state": "InvokeJobScraper",
+                "errorFunc": context.function_name,
+                "errorType": type(data).__name__,
+                "errorMessage": data,
+                "stackTrace": traceback.format_exc(),
+            },
+            "data": get_data(event=event),
+        }
+
     stop_signal: bool = check_for_stop_signal(
         data=data, remaining_hits=remainder, limit_date=limit_date
     )
@@ -290,10 +343,17 @@ def scrape(
     else:
         logger.info("Scrape found no new jobs, informing state machine")
     return {
-        "status_code": 200,
-        "jobs": jobs,
-        "remaining_hits": remainder,
-        "next_offset": next_offset,
+        "status": {"statusCode": 200, "state": "InvokeJobScraper"},
+        "data": {
+            k: v
+            for k, v in get_data(event=event).items()
+            if k not in ["jobs", "next_offset", "remaining_hits"]
+        }
+        | {
+            "remaining_hits": remainder,
+            "jobs": jobs,
+            "next_offset": next_offset,
+        },
     }
 
 
@@ -318,12 +378,16 @@ def job_scraper_handler(
         return scrape(event=event, context=context)
 
     except Exception as e:
-        logger.exception(f"Error occurred in Lambda var_replacer: {str(e)}")
+        logger.exception(f"Error occurred in Lambda var_replacer: {e}")
+
         return {
-            "status_code": 500,
-            "state": "InvokeJobScraper",
-            "errorFunc": context.function_name,
-            "errorType": type(e).__name__,
-            "errorMessage": str(e),
-            "stackTrace": traceback.format_exc(),
+            "status": {
+                "statusCode": 500,
+                "state": "InvokeJobScraper",
+                "errorFunc": context.function_name,
+                "errorType": type(e).__name__,
+                "errorMessage": str(e),
+                "stackTrace": traceback.format_exc(),
+            },
+            "data": get_data(event=event),
         }

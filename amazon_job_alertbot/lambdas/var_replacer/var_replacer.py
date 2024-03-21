@@ -7,6 +7,25 @@ from typing import Any
 logger: Logger = logging.getLogger(name="var_replacer")
 logger.setLevel(level="INFO")
 
+
+def get_data(
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Retrieves a dictionary for the data key of the Payload
+    from event.
+
+    Args:
+        event (dict[Any, Any]): A dictionary to parse.
+
+    Returns:
+        dict[Any, Any]: The parsed dictionary.
+
+    """
+    payload = event.get("Payload", {}) or event
+    return payload.get("data", {})
+
+
 def parse_arn(arn: str) -> tuple[str, str, str]:
     """
     Parses an ARN (Amazon Resource Name) and extracts the region and account ID.
@@ -61,8 +80,10 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
         dict[str, int | str | Any]: The modified event dictionary with variables
         replaced.
     """
+
     logger.debug(f"Event Data:\n {event}")
-    replacements = event["detail"].get("replacements", {})
+    data = get_data(event=event)
+    replacements: dict[str, Any] = data.get("replacements", {})
     now = datetime.now(timezone.utc).date()
     replacements["today"] = now.strftime(format="%d %B %y")
     (
@@ -71,16 +92,21 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
         replacements["account_id"],
     ) = parse_arn(arn=context.invoked_function_arn)
 
-    event = recursive_replace(obj=event, replacements=replacements)
-    logger.info("Finished replacing variables")
+    substituted_data = recursive_replace(
+        obj={k: v for k, v in data.items() if k != "replacements"},
+        replacements=replacements,
+    )
+    logger.info(f"Finished replacing variables. Substituted data: {substituted_data}")
+
     return {
-        "status_code": 200,
-        "searchparams": event["detail"]["SearchSettings"],
-        "dbparams": event["detail"]["DBSettings"],
-        "sendparams": event["detail"]["SendSettings"],
+        "data": dict(replacements, **substituted_data),
+        "status": (
+            {
+                "statusCode": 200,
+                "state": "ReplaceParams",
+            },
+        ),
     }
-
-
 def var_replacer_handler(
     event: dict[str, Any], context: dict[str, Any]
 ) -> str | dict[str, Any] | list[Any] | Any:
@@ -95,12 +121,16 @@ def var_replacer_handler(
         return replace_vars(event=event, context=context)
 
     except Exception as e:
-        logger.error(f"Error occurred in Lambda var_replacer: {str(e)}")
+        logger.error(f"Error occurred in Lambda var_replacer: {e}")
+
         return {
-            "status_code": 500,
-            "state": "ReplaceParams",
-            "errorType": type(e).__name__,
-            "errorFunc": context.function_name,
-            "errorMessage": str(e),
-            "stackTrace": traceback.format_exc(),
+            "status": {
+                "statusCode": 500,
+                "state": "ReplaceParams",
+                "errorType": type(e).__name__,
+                "errorFunc": context.function_name,
+                "errorMessage": str(e),
+                "stackTrace": traceback.format_exc(),
+            },
+            "data": get_data(event=event),
         }

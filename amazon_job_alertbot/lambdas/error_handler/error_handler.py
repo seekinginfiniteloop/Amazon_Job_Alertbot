@@ -6,6 +6,23 @@ from typing import Any
 logger: Logger = logging.getLogger()
 logger.setLevel(level=logging.ERROR)
 
+def get_payload(
+    event: dict[str, Any],
+) -> tuple[dict[str, Any]]:
+    """
+    Retrieves a tuple of dictionaries for data from the originating function, status report from the function, and Cause object if available.
+
+    Args:
+        event (dict[Any, Any]): A dictionary to parse.
+
+    Returns:
+        tuple[dict[Any, Any]]: The parsed dictionary.
+
+    """
+    payload = event.get("Payload", {}) or event
+    return (payload.get("data", {}),, payload.get("status", {}), payload.get("cause", {}))
+
+
 lambda_errors = {
     "ServiceErrors": {
         "InvocationErrors": [
@@ -21,7 +38,7 @@ lambda_errors = {
         ],
     },
     "FunctionErrors": {
-        "HandledErrors": [],
+        "HandledErrors": ["ConnectionError", "ConnectTimeout"],
         "UnhandledErrors": {
             "TimeoutErrors": ["Task timed out", "Timeout"],
             "MemoryErrors": ["OutOfMemoryError", "Memory limit exceeded"],
@@ -55,6 +72,7 @@ lambda_errors = {
 retryable_errors: list[str] = (
     lambda_errors["ServiceErrors"]["ThrottlingErrors"]
     + lambda_errors["ServiceErrors"]["AWSServiceLimits"]
+    + lambda_errors["FunctionErrors"]["HandledErrors"]
     + lambda_errors["FunctionErrors"]["UnhandledErrors"]["TimeoutErrors"]
     + lambda_errors["FunctionErrors"]["UnhandledErrors"]["MemoryErrors"]
     + lambda_errors["LogAndMonitoringErrors"]["CloudWatchLogs"]
@@ -71,33 +89,32 @@ def handle_error(event) -> dict[str, int | Any | str]:
     Returns:
         dict[str, int | Any | str]: A dictionary with the response data, including the status code, state, action, and error details.
     """
-    errors = event.get("errorInfo", {})
-    state = errors.get("state", "Unknown State")
-    error_message = errors.get("errorMessage", "error message not found")
-    error_type = errors.get("errorType", "error type not found")
-
+    data, status, cause = get_payload(event=event)
+    if cause:
+        logger.error(f"Function failed with reported Cause: \n {cause}")
+    state = status.get("state", "Unknown State")
+    error_message = status.get("errorMessage", "error message not found")
+    error_type = status.get("errorType", "error type not found")
+    logger.error(f"Error Handler handling error {error_type} from {state}. Received error message: \n {error_message}")
     if error_type in retryable_errors:
-        return {
-            "status_code": 200,
-            "state": state,
-            "action": "retry",
-            "error_details": (
+        status["action"] = "retry"
+        status["error_details"] = (
                 f"error_handler handled error {error_type} from {state}."
                 "Retrying."
                 f"Error details: {error_message}."
             ),
-        }
-    return {
-        "status_code": 200,
-        "state": state,
-        "action": "end",
-        "error_details": (
-            f"terminating based on error {error_type}."
-            f"Error details:\n error message: {error_message}\n\n stack trace:"
-            f"{errors.get("stackTrace")}"
-        ),
-    }
+        status["statusCode"] = 200
+        status["state"] = state
+        return {'status': status | cause, 'data': data}
 
+    status["action"] = "end"
+    status["error_details"] = (f"terminating based on error {error_type}. Error details:\n error message: {error_message}\n\n stack trace:"
+    f"{status.get("stackTrace")}")
+    logger.error(status["error_details"])
+    status = status | cause
+    status["statusCode"] = 500
+    status["state"] = f"ErrorHandler unhandled error from {state}"
+    return status
 
 def error_handler_handler(
     event: dict[str, Any], context: dict[str, Any]
@@ -114,31 +131,17 @@ def error_handler_handler(
     """
     logger.info(f"Error Handler invoked with event: \n {event}")
     try:
-        response = handle_error(event=event)
-        logger.info(
-            "Error handled. Occurred in "
-            f"{event.get('errorInfo').get('errorState')}"
-            f": {event.get('errorInfo')}. Routing to action: {response.get("action", "action not found")}"
-        )
-        return response
+        return handle_error(event=event)
+
 
     except Exception as e:
-        error = dict(
-            zip(
-                ["errorType", "errorMessage", "stackTrace"],
-                [type(e).__name__, str(e), traceback.format_exc()],
-            )
-        )
-        logger.exception(
-            f"An error occurred when attempting to handle error in error_handler Lambda. Error: {e}\n\nError details: {error}"
-        )
-        return {
-            "status_code": 500,
-            "action": "end",
-            "error_details": (
-                f"An error occurred when attempting to handle error in error_handler Lambda. Error: {e}.\n\n"
-                f"Error details: {error}. Error occurred while trying to handle "
-                f"{event.get('errorInfo', {}).get('errorType')} from {event.get('errorState')} with message "
-                f"{event.get('errorInfo', {}).get('errorMessage')}"
-            ),
+        error = {
+            "errorType": type(e).__name__,
+            "errorMessage": str(e),
+            "stackTrace": traceback.format_exc(),
         }
+        data, status, cause = get_payload(event=event)
+        error_details = f"An error occurred when attempting to handle error in HandleError state. Error: {e}\n\nError details: {error}\n\n "
+        logger.exception(error_details)
+        logger.exception(f"statusCode: 500, action: end, error_details: error_details, state: HandleError, error_handled_information: data: {data}, status_info: {status}, cause: {cause}")
+        raise e

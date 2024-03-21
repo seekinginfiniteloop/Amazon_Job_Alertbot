@@ -281,14 +281,14 @@ def fix_tag_keys(tag_key: str, template: Path) -> Path:
     Return:
         the new Path of the adjusted template
     """
-    with open(file=template, mode="r") as f:
+    with template.open("r") as f:
         data: str = f.read()
     start_pt: int = re.search(pattern=r"(Resources[:])", string=data).end()
     static, updated = data[:start_pt], data[start_pt:]
     updated: str = updated.replace("jobalertsagent", tag_key)
     new_data: str = static + updated
     new_path: Path = template.with_name(f"{template.stem}_adjusted{template.suffix}")
-    with open(file=new_path, mode="w") as f:
+    with new_path.open("w") as f:
         f.write(new_data)
     return new_path
 
@@ -320,15 +320,15 @@ def reorient(loop_count: int = 0) -> Path:
     )
 
 
-def get_template() -> tuple[Path, Path]:
+def get_template() -> Path | None:
     """
-    Retrieves the paths of templates from the templates directory.
+    Retrieves the paths of CF template from the templates directory.
 
     Returns:
-        A tuple with the paths of root and statemachine templates, if found.
+        path to CF template, if found
     """
     templates_dir = Path.cwd() / "templates"
-    path = templates_dir if templates_dir.exists() else reorient() / "templates"
+    path: Path = templates_dir if templates_dir.exists() else reorient() / "templates"
     return next(path.glob(pattern="*root*.yaml"), None)
 
 
@@ -476,21 +476,6 @@ def stack_exists(stack_name: str) -> bool | dict[str, Any]:
         if stacks := cf.describe_stacks(StackName=stack_name).get("Stacks"):
             return stacks[0]
     return False
-
-
-def read_template(template_path: str) -> str:
-    """
-    Reads the contents of a template file.
-
-    Args:
-        template_path (str): The path to the template file.
-
-    Returns:
-        str: The contents of the template file.
-    """
-
-    with open(file=template_path, mode="r") as file:
-        return file.read()
 
 
 def await_response(stack_name: str, update: bool = False) -> None | Any:
@@ -813,7 +798,14 @@ def is_different(file_obj: Path | io.BufferedReader, s3object: str) -> bool:
     with contextlib.suppress(ClientError, AttributeError):
         s3object.load()
         if object_sha := s3object.checksum_sha1:
-            return get_hash_digest(file_obj=file_obj) != object_sha.strip('"')
+            print(f"object_sha: {object_sha}")
+            print(f"file_obj: {file_obj}")
+            print(f"file_obj.name: {file_obj.name}")
+            return get_hash_digest(
+                file_obj=file_obj, algo="sha256"
+            ) != object_sha.strip('"')
+        elif object_length := s3object.content_length:
+            return object_length != file_obj.stat().st_size
     return True
 
 
@@ -828,9 +820,7 @@ def get_hash_digest(file_obj: Path | io.BufferedReader, algo: str = "sha1") -> s
         str: The base64-encoded hash digest of the file, decoded to utf-8.
 
     """
-    buff: io.BufferedReader = (
-        file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
-    )
+    buff = file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
     buff.seek(0)
     h = hashlib.new(name=algo, data=buff.read())
     return base64.b64encode(h.digest()).decode("utf-8")
@@ -861,9 +851,8 @@ def upload_to_s3(
     print(
         f"File upload: bucket: {bucket}\n, file_obj: {file_obj}\n, content_type: {content_type}\n"
     )
-    body: io.BufferedReader = (
-        file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
-    )
+    body = file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+
     body.seek(0)
     sha_hash = get_hash_digest(file_obj=body)
     body.seek(0)
@@ -890,6 +879,7 @@ def upload_to_s3(
         and response.get("ResponseMetadata").get("ChecksumSHA1") == sha_hash
     ):
         print(f"File uploaded to {bucket}/{s3_key} and checksum validated.\n\n")
+    body.close()
 
 
 def get_v_for_k(kv_list: list[dict[str, Any]], kval: str, prefix: str = "") -> Any:
@@ -943,8 +933,9 @@ def update_lambda_functions(stack, bucket) -> None:
     Returns:
         None
     """
+    print("updating lambda functions")
     lambda_arn_string: str = get_v_for_k(
-        kv_list=stack["Outputs"], kval="lambda_funcs", prefix="Output"
+        kv_list=stack["Outputs"], kval="LambdaFuncs", prefix="Output"
     )
     if not lambda_arn_string:
         return
@@ -965,7 +956,7 @@ def update_lambda_functions(stack, bucket) -> None:
         l.update_function_code(
             FunctionName=func_arn, S3Bucket=bucket, S3Key=key, Publish=True
         )
-    print("Lambda functions updated.\n\n")
+    print("lambda functions updated.\n\n")
 
 
 def main() -> None:
@@ -1031,18 +1022,6 @@ def main() -> None:
             update_stacks(params=root_params, s3key=root_key)
             if update_lambdas:
                 update_lambda_functions(stack=stack, bucket=bucket)
-            with contextlib.suppress(ClientError):
-                response = boto3.client("sns").subscribe(
-                    TopicArn=get_v_for_k(
-                        kv_list=stack.get("Outputs"),
-                        kval="TopicArn",
-                        prefix="Output",
-                    ),
-                    Protocol="email",
-                    Endpoint=parse_cli().get("youremail"),
-                    ReturnSubscriptionArn=True,
-                )
-                print(f"subscription arn: {response.get("SubscriptionArn")}")
         else:
             cleanup()
     else:
