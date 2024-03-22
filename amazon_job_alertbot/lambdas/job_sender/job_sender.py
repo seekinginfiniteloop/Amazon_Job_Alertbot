@@ -33,7 +33,7 @@ def get_data(
 
     """
     payload = event.get("Payload", {}) or event
-    return (payload.get("data", {}),)
+    return payload.get("data", {})
 
 
 class Message:

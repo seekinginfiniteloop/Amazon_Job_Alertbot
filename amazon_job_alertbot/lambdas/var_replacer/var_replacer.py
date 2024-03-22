@@ -1,4 +1,5 @@
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 from logging import Logger
@@ -55,8 +56,11 @@ def recursive_replace(
     """
     if isinstance(obj, str):
         for key, value in replacements.items():
-            obj: str = obj.replace(f"{{{{ {key} }}}}", value)
-        return obj
+            pattern: re.Pattern[str] = re.compile(
+                pattern=r"(\{\{" + key + r"\}\})", flags=re.MULTILINE
+            )
+            return pattern.sub(repl=value, string=obj)
+
     elif isinstance(obj, dict):
         return {
             k: recursive_replace(obj=v, replacements=replacements)
@@ -100,13 +104,10 @@ def replace_vars(event, context) -> dict[str, int | str | Any]:
 
     return {
         "data": dict(replacements, **substituted_data),
-        "status": (
-            {
-                "statusCode": 200,
-                "state": "ReplaceParams",
-            },
-        ),
+        "status": {"statusCode": 200, "state": "ReplaceParams"},
     }
+
+
 def var_replacer_handler(
     event: dict[str, Any], context: dict[str, Any]
 ) -> str | dict[str, Any] | list[Any] | Any:

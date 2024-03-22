@@ -4,6 +4,7 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from logging import Logger
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 from requests import Response, Session
@@ -18,6 +19,7 @@ def get_data(
     """
     Retrieves a dictionary for key
     from event.
+from functools import partial
 
     Args:
         event (dict[Any, Any]): A dictionary to parse.
@@ -27,7 +29,7 @@ def get_data(
 
     """
     payload = event.get("Payload", {}) or event
-    return (payload.get("data", {}),)
+    return payload.get("data", {})
 
 
 def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
@@ -52,21 +54,6 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     return params, remaining_hits, newest_scrape
 
 
-def process_string(string: str) -> str:
-    """
-    Processes a string by removing leading and trailing whitespace
-    and replacing space with a plus sign.
-
-    :param string: String to be processed.
-    :return: Processed string.
-    """
-    return (
-        string.strip().replace(" ", "+").replace('"', "%22")
-        if isinstance(string, str)
-        else string
-    )
-
-
 def gen_search_url(
     url: str,
     facets: dict[str, list[str | bool]],
@@ -87,24 +74,16 @@ def gen_search_url(
     """
 
     query_params = []
-
     for key, values in facets.items():
         if isinstance(values, list):
-            query_params.extend(
-                f"{key}%5B%5D={process_string(value)}" for value in values
-            )
+            query_params[key] = values
         else:
-            query_params.append(f"facets%5B%5D={key}")
+            query_params["facets[]"] = key
 
     for key, value in criteria.items():
-        if isinstance(value, list):
-            query_params.extend(f"{key}={process_string(v)}" for v in value)
-        else:
-            query_params.append(
-                f"{key}={process_string(value)}" if value else f"{key}="
-            )
+        query_params[key] = value or ""
 
-    query_string = "&".join(query_params)
+    query_string = urlencode(query_params, doseq=True)
     return f"{url}?{query_string}"
 
 
@@ -155,12 +134,15 @@ def fetch_job_data(
 
     """
     try:
+        logger.info(f"Fetching response from url: {url} with headers: {headers}")
         response: Response = session.get(url=url, headers=headers, timeout=30)
-        if response.StatusCode != 200:
+        if response.status_code != 200:
             logger.error(
-                f"Error: Received status code {response.StatusCode} from the server."
+                f"Error: Received status code {response.status_code} from the server."
             )
         try:
+            logger.info(f"Response: {response.json(strict=False)}")
+
             return response.json(strict=False)
         except ValueError as e:
             logger.exception(f"Error: Unable to parse JSON response. {e}")

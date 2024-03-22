@@ -1208,7 +1208,7 @@ Resources:
           "States": {
             "ReplaceParams": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "Resource": "arn:aws:states:::lambda:invoke",
               "InputPath": "$.detail",
               "Parameters": {
                 "FunctionName": "${VarReplacerFunctionArn}",
@@ -1244,8 +1244,8 @@ Resources:
               ],
               "ResultSelector": {
                 "desiredOutput": {
-                  "data.$": "$.output.Payload.data",
-                  "status.$": "$.output.Payload.status"
+                  "data.$": "$.Payload.data",
+                  "status.$": "$.Payload.status"
                 }
               },
               "ResultPath": "$.params",
@@ -1265,7 +1265,7 @@ Resources:
             },
             "InvokeJobScraper": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentScraperFunctionArn}",
                 "Payload.$": "$"
@@ -1293,8 +1293,8 @@ Resources:
               ],
               "ResultSelector": {
                 "scrapeOutput": {
-                  "data.$": "$.output.Payload.data",
-                  "status.$": "$.output.Payload.status"
+                  "data.$": "$.Payload.data",
+                  "status.$": "$.Payload.status"
                 }
               },
               "ResultPath": "$.ScraperResult",
@@ -1333,7 +1333,7 @@ Resources:
             },
             "InvokeJobStore": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentStoreFunctionArn}",
                 "Payload.$": "$"
@@ -1361,8 +1361,8 @@ Resources:
               ],
               "ResultSelector": {
                 "results": {
-                  "status.$": "$.output.Payload.status",
-                  "data.$": "$.output.Payload.data"
+                  "status.$": "$.Payload.status",
+                  "data.$": "$.Payload.data"
                 }
               },
               "ResultPath": "$.params",
@@ -1393,7 +1393,7 @@ Resources:
                   "States": {
                     "SendJobBatch": {
                       "Type": "Task",
-                      "Resource": "arn:aws:states:::aws-sdk:sqs:sendMessage",
+                      "Resource": "arn:aws:states:::sqs:sendMessage",
                       "Parameters": {
                         "QueueUrl": "${JobQueueUrl}",
                         "MessageBody.$": "$.data.new_jobs"
@@ -1462,7 +1462,7 @@ Resources:
             },
             "InvokeSender": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentSenderFunctionArn}",
                 "Payload.$": "$"
@@ -1508,19 +1508,19 @@ Resources:
             },
             "HandleError": {
               "Type": "Task",
-              "Resource": "arn:aws:states:::aws-sdk:lambda:invoke",
+              "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
                 "FunctionName": "${ErrorHandlerFunctionArn}",
                 "Payload": {
-                  "status.$": "$errorInfo.output.Payload.status",
-                  "data.$": "$errorInfo.output.Payload.data",
-                  "cause.$": "$errorInfo.Cause"
+                  "status.$": "$.errorInfo.output.Payload.status",
+                  "data.$": "$.errorInfo.output.Payload.data",
+                  "cause.$": "$.errorInfo.Cause"
                 }
               },
               "ResultSelector": {
                 "outcome": {
-                  "status.$": "$.output.Payload.status",
-                  "data.$": "$.output.Payload.data"
+                  "status.$": "$.Payload.status",
+                  "data.$": "$.Payload.data"
                 }
               },
               "ResultPath": "$.errorResult",
