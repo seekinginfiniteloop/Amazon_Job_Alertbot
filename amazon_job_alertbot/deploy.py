@@ -796,14 +796,17 @@ def is_different(file_obj: Path | io.BufferedReader, s3object: str) -> bool:
         bool: True if the hash of the local file is different from the hash of the S3 object, False otherwise.
     """
     with contextlib.suppress(ClientError, AttributeError):
-        s3object.load()
-        if object_sha := s3object.checksum_sha1:
-            print(f"object_sha: {object_sha}")
-            print(f"file_obj: {file_obj}")
-            print(f"file_obj.name: {file_obj.name}")
-            return get_hash_digest(
-                file_obj=file_obj, algo="sha256"
-            ) != object_sha.strip('"')
+        response = s3.get_object_attributes(
+            Bucket=s3object.bucket_name,
+            Key=s3object.key,
+            ObjectAttributes=["Checksum", "ObjectSize"],
+        )
+        if response and (
+            object_sha := response.get("Checksum", {}).get("ChecksumSHA1")
+        ):
+            return get_hash_digest(file_obj=file_obj, algo="sha1") != object_sha.strip(
+                '"'
+            )
         elif object_length := s3object.content_length:
             return object_length != file_obj.stat().st_size
     return True
@@ -851,7 +854,9 @@ def upload_to_s3(
     print(
         f"File upload: bucket: {bucket}\n, file_obj: {file_obj}\n, content_type: {content_type}\n"
     )
-    body = file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+    body: io.BufferedReader = (
+        file_obj.open(mode="rb") if isinstance(file_obj, Path) else file_obj
+    )
 
     body.seek(0)
     sha_hash = get_hash_digest(file_obj=body)

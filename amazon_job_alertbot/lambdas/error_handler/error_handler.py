@@ -129,7 +129,7 @@ def error_handler_handler(
     Returns:
         dict[str, Any]: A dictionary with the response data, including the status code, action, and error details.
     """
-    logger.info(f"Error Handler invoked with event: \n {event}")
+    logger.debug(f"Error Handler invoked with event: \n {event}")
     try:
         return handle_error(event=event)
 

@@ -17,15 +17,15 @@ def get_data(
     event: dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Retrieves a dictionary for key
-    from event.
-from functools import partial
+        Retrieves a dictionary for key
+        from event.
+    from functools import partial
 
-    Args:
-        event (dict[Any, Any]): A dictionary to parse.
+        Args:
+            event (dict[Any, Any]): A dictionary to parse.
 
-    Returns:
-        dict[Any, Any]: The parsed dictionary.
+        Returns:
+            dict[Any, Any]: The parsed dictionary.
 
     """
     payload = event.get("Payload", {}) or event
@@ -48,7 +48,7 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     """
     data = get_data(event)
     params = data.get("searchparams", {})
-    logger.info(f"params: {params}")
+    logger.debug(f"params: {params}")
     remaining_hits = data.get("remaining_hits")
     newest_scrape = data.get("newest_scrape")
     return params, remaining_hits, newest_scrape
@@ -73,17 +73,17 @@ def gen_search_url(
 
     """
 
-    query_params = []
+    query_params = {}
     for key, values in facets.items():
-        if isinstance(values, list):
-            query_params[key] = values
-        else:
-            query_params["facets[]"] = key
+        if not values:
+            continue
+        new_key = f"{key}[]"
+        query_params[new_key] = values
 
     for key, value in criteria.items():
         query_params[key] = value or ""
 
-    query_string = urlencode(query_params, doseq=True)
+    query_string: str = urlencode(query=query_params, doseq=True)
     return f"{url}?{query_string}"
 
 
@@ -106,7 +106,7 @@ def set_params(
     Returns:
         A tuple containing the search parameters with default values set.
     """
-    logger.info(f"search_params: {search_params}")
+    logger.debug(f"search_params: {search_params}")
     lang_code = search_params.get("lang_code", "en")
     facets = search_params.get("facets", {})
     criteria = search_params.get("criteria", {})
@@ -134,14 +134,14 @@ def fetch_job_data(
 
     """
     try:
-        logger.info(f"Fetching response from url: {url} with headers: {headers}")
+        logger.debug(f"Fetching response from url: {url} with headers: {headers}")
         response: Response = session.get(url=url, headers=headers, timeout=30)
         if response.status_code != 200:
             logger.error(
                 f"Error: Received status code {response.status_code} from the server."
             )
         try:
-            logger.info(f"Response: {response.json(strict=False)}")
+            logger.debug(f"Response: {response.json(strict=False)}")
 
             return response.json(strict=False)
         except ValueError as e:
@@ -194,7 +194,7 @@ def fetch_jobs(
     facets, criteria, headers, base_url, session, init_headers = set_params(
         search_params=search_params
     )
-    logger.info(f"Establishing session with {base_url}")
+    logger.debug(f"Establishing session with {base_url}")
     try:
         session.get(url=base_url, headers=init_headers)
         search_url: str = gen_search_url(
@@ -257,10 +257,10 @@ def check_for_stop_signal(
     Returns:
         bool: True if the stop signal should be set, False otherwise.
     """
-    logger.info(f"Checking for stop signal with {remaining_hits} remaining hits")
+    logger.debug(f"Checking for stop signal with {remaining_hits} remaining hits")
     stop_signal = False
     if limit_date:
-        logger.info(f"Checking for stop signal with limit date {limit_date}")
+        logger.debug(f"Checking for stop signal with limit date {limit_date}")
     if data and remaining_hits and limit_date:
         dates = [get_date_updated(job=job) for job in data]
         stop_signal = any(date < limit_date for date in dates)
@@ -308,9 +308,10 @@ def scrape(
     )
     jobs = data or []
     remainder: int = 0 if stop_signal else remainder
+    jobs_found: int = len(jobs) if jobs else 0
     if data and stop_signal:
         logger.info(
-            f"Scrape found {len(data)} new jobs; returning to state machine"
+            f"Scrape found {jobs_found} new jobs; returning to state machine"
             "with stop signal"
         )
     elif stop_signal:
@@ -319,7 +320,7 @@ def scrape(
         )
     elif data:
         logger.info(
-            f"Scrape found {len(data)} new jobs with {remaining_hits}"
+            f"Scrape found {jobs_found} new jobs with {remaining_hits}"
             "remaining; returning to state machine"
         )
     else:
@@ -332,6 +333,7 @@ def scrape(
             if k not in ["jobs", "next_offset", "remaining_hits"]
         }
         | {
+            "jobs_found": jobs_found,
             "remaining_hits": remainder,
             "jobs": jobs,
             "next_offset": next_offset,
@@ -354,7 +356,7 @@ def job_scraper_handler(
     Returns:
         dict containing list of jobs as dicts, remaining hits, and stop_signal.
     """
-    logger.info(f"Scrape function execution started with event: \n {event}")
+    logger.debug(f"Scrape function execution started with event: \n {event}")
 
     try:
         return scrape(event=event, context=context)

@@ -8,14 +8,18 @@ from re import Match, Pattern
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
+from botocore.config import Config
 
 logger: Logger = logging.getLogger(name="sender")
 logger.setLevel(level="DEBUG")
 
 today = datetime.now(timezone.utc).date()
 
-sqs = boto3.client("sqs")
-sns = boto3.client("sns")
+config = Config(retries={"max_attempts": 10, "mode": "adaptive"})
+
+sqs = boto3.client("sqs", config=config)
+sns = boto3.client("sns", config=config)
 
 
 def get_data(
@@ -77,6 +81,9 @@ class Message:
             "job_count": str(len(self.jobs)),
         }
         self.topic_arn: str = params["topic_arn"]
+        logger.debug(
+            f"initializing Message with {len(self.jobs)}, \n  params: {self.params}, \n  topic_arn: {self.topic_arn}"
+        )
         self.subject: str = self.assemble_message(params.get("subject", ""))
         self.default = self.assemble_message(params.get("default_intro", "")) + "".join(
             [self.assemble_message(params.get("default_entry", "")) for _ in jobs]
@@ -88,6 +95,7 @@ class Message:
             )
             + self.assemble_message(params.get("email_outro", ""))
         )
+        logger.debug(f"Message assembled email: {self.email}")
         self.sms: str = "".join(
             [self.assemble_message(params.get("sms", "")) for _ in self.jobs]
         )
@@ -115,6 +123,7 @@ class Message:
         Returns:
             Any: The response from the publish operation.
         """
+        logger.debug(f"Publishing message to topic {self.topic_arn}")
         return sns.publish(
             topicArn=self.topic_arn,
             Message=self.message,
@@ -179,7 +188,7 @@ def retrieve_queue(params: dict[str, Any]) -> list[Any]:
     """
     queue_url = params["sqs_queue_url"]
     jobs = []
-    logger.info("Polling Amazon jobs SQS queue")
+    logger.debug("Polling Amazon jobs SQS queue")
     while True:
         response = sqs.receive_message(
             QueueUrl=queue_url,
@@ -198,7 +207,7 @@ def retrieve_queue(params: dict[str, Any]) -> list[Any]:
             sqs.delete_message(
                 QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"]
             )
-            logger.info(f"Retrieved and deleted message {message['ReceiptHandle']}")
+            logger.debug(f"Retrieved and deleted message {message['ReceiptHandle']}")
     logger.info(
         f"Retrieved {len(jobs)} jobs from Amazon jobs queue. Checking for empty queue."
     )
@@ -233,9 +242,9 @@ def purge_queue(queue_url: str) -> None:
     Args:
         queue_url: The URL of the queue to purge.
     """
-    logger.info("Purging Amazon jobs SQS queue")
+    logger.debug("Purging Amazon jobs SQS queue")
     sqs.purge_queue(QueueUrl=queue_url)
-    logger.info("Amazon jobs SQS queue purged")
+    logger.debug("Amazon jobs SQS queue purged")
 
 
 def send_jobs(event: dict[str, Any]) -> dict[str, int]:
@@ -274,7 +283,7 @@ def job_sender_handler(
         dict with status and/or errors
     """
 
-    logger.info(f"Lambda Sender execution started with event: \n {event}")
+    logger.debug(f"Lambda Sender execution started with event: \n {event}")
     try:
         return send_jobs(event=event)
 

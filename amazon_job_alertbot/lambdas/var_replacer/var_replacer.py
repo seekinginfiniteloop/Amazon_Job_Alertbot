@@ -117,7 +117,7 @@ def var_replacer_handler(
     Args:
         Any: The modified event object after performing replacements.
     """
-    logger.info(f"Starting var_replacer Lambda with event:\n{event}")
+    logger.debug(f"Starting var_replacer Lambda with event:\n{event}")
     try:
         return replace_vars(event=event, context=context)
 

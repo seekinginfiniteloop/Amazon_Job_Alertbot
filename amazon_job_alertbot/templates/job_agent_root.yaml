@@ -135,6 +135,7 @@ Resources:
               - resource-manager:*
               - s3:*
               - sns:*
+              - sdb:*
               - sns:*
               - sqs:*
               - ssm:*
@@ -180,6 +181,7 @@ Resources:
               - logs:*
               - rds:*
               - s3:*
+              - sdb:*
               - sns:*
               - sqs:*
               - sts:*
@@ -434,6 +436,14 @@ Resources:
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
+              - Effect: Allow
+                Sid: AllowSDBDomainManagement
+                Action:
+                  - sdb:CreateDomain
+                  - sdb:DeleteDomain
+                  - sdb:ListDomains
+                  - sdb:BatchDeleteAttributes
+                Resource: "*"
   JobAgentBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Delete
@@ -640,31 +650,43 @@ Resources:
           AttributeType: S
         - AttributeName: date_off_market
           AttributeType: S
+        - AttributeName: type
+          AttributeType: S
       BillingMode: PAY_PER_REQUEST
       ContributorInsightsSpecification:
-        Enabled: true
+        Enabled: false
       DeletionProtectionEnabled: false
       GlobalSecondaryIndexes:
         - IndexName: last_scrape-index
           ContributorInsightsSpecification:
-            Enabled: true
+            Enabled: false
           KeySchema:
-            - AttributeName: last_scrape
+            - AttributeName: type
               KeyType: HASH
-            - AttributeName: id_icims
+            - AttributeName: last_scrape
               KeyType: RANGE
           Projection:
-            ProjectionType: ALL
+            NonKeyAttributes:
+              - id_icims
+              - last_updated
+              - posted_date
+              - date_off_market
+            ProjectionType: INCLUDE
         - IndexName: date_off_market-index
           ContributorInsightsSpecification:
-            Enabled: true
+            Enabled: false
           KeySchema:
-            - AttributeName: id_icims
+            - AttributeName: type
               KeyType: HASH
             - AttributeName: date_off_market
               KeyType: RANGE
           Projection:
-            ProjectionType: ALL
+            NonKeyAttributes:
+              - id_icims
+              - last_updated
+              - posted_date
+              - last_scrape
+            ProjectionType: INCLUDE
       KeySchema:
         - AttributeName: id_icims
           KeyType: HASH
@@ -843,7 +865,7 @@ Resources:
       FunctionName: !Sub "${BaseName}-var-replacer"
       Handler: var_replacer.var_replacer_handler
       Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
-      Runtime: python3.11
+      Runtime: python3.12
       LoggingConfig:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
@@ -922,7 +944,12 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:Query
                   - dynamodb:Scan
-                Resource: !GetAtt "JobAgentStoreTable.Arn"
+                  - dynamodb:UpdateItem
+                  - dynamodb:DescribeTable
+                Resource:
+                  - !GetAtt "JobAgentStoreTable.Arn"
+                  - !Sub "${JobAgentStoreTable.Arn}/index/*"
+                  - !Sub "${JobAgentStoreTable.Arn}/*"
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
@@ -940,7 +967,7 @@ Resources:
       FunctionName: !Sub "${BaseName}-job-store"
       Handler: job_store.job_store_handler
       Role: !GetAtt "JobAgentLambdaStoreRole.Arn"
-      Runtime: python3.11
+      Runtime: python3.12
       LoggingConfig:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
@@ -1006,7 +1033,7 @@ Resources:
       FunctionName: !Sub "${BaseName}-job-sender"
       Handler: job_sender.job_sender_handler
       Role: !GetAtt "JobAgentLambdaSenderRole.Arn"
-      Runtime: python3.11
+      Runtime: python3.12
       Code:
         S3Bucket: !Ref "JobAgentBucket"
         S3Key: lambdas/job_sender.zip
@@ -1028,7 +1055,7 @@ Resources:
       FunctionName: !Sub "${BaseName}-error-handler"
       Handler: error_handler.error_handler_handler
       Role: !GetAtt "JobAgentLambdaBaseRole.Arn"
-      Runtime: python3.11
+      Runtime: python3.12
       LoggingConfig:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
@@ -1234,7 +1261,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 180,
+              "TimeoutSeconds": 60,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],
@@ -1310,8 +1337,8 @@ Resources:
                   "Next": "PassToErrorHandler"
                 },
                 {
-                  "Variable": "$.data.jobs",
-                  "IsPresent": true,
+                  "Variable": "$.data.jobs_found",
+                  "NumericGreaterThan": 0,
                   "Next": "PassToStore"
                 }
               ],
@@ -1320,15 +1347,15 @@ Resources:
             "PassToStore": {
               "Type": "Pass",
               "Parameters": {
+                "data.$": "$.data",
                 "tableInfo": {
                   "tablename": "${JobAgentStoreTableName}",
                   "tablearn": "${JobAgentStoreTableArn}"
-                }
-              },
-              "Result": {
-                "data.$": "States.JsonMerge($.data, $.tableInfo, false)",
+                },
                 "status.$": "$.status"
               },
+              "ResultPath": "$.mergedData",
+              "OutputPath": "$.mergedData",
               "Next": "InvokeJobStore"
             },
             "InvokeJobStore": {
@@ -1336,7 +1363,10 @@ Resources:
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
                 "FunctionName": "${JobAgentStoreFunctionArn}",
-                "Payload.$": "$"
+                "Payload": {
+                "data.$": "States.JsonMerge($.data, $.tableInfo, false)",
+                "status.$": "$.status"
+                }
               },
               "Retry": [
                 {
@@ -1351,7 +1381,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 240,
+              "TimeoutSeconds": 600,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],

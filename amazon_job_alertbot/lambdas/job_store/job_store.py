@@ -6,14 +6,35 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 import boto3
+from boto3.dynamodb.conditions import Key
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(name="amzn_job_store")
 logger.setLevel(level="DEBUG")
 
 
-today = datetime.now(timezone.utc).date()
+today = datetime.now(timezone.utc)
 today_str: str = today.isoformat()
+table_empty = False
+
+
+def log_client_error(error: Exception, func: str) -> None:
+    """
+    Logs the client error message.
+
+    Args:
+        error (Exception): The error to log.
+        func (str): The function that threw the error.
+    """
+    logger.error(f"Error in {func}: {error}")
+    logger.error(f"Error code: {error.response['Error']['Code']}")
+    logger.error(f"Error message: {error.response["Error"]["Message"]}")
+    logger.error(f"Error RequestID: {error.response["ResponseMetadata"]["RequestId"]}")
+    logger.error(
+        f"Error HTTPStatusCode: {error.response['ResponseMetadata']['HTTPStatusCode']}"
+    )
+    logger.error(f"Complete error response: {error.response}")
 
 
 def get_data(
@@ -47,9 +68,9 @@ def set_vars(
         tuple: A tuple containing the jobs, remaining hits, table, a boolean value, and the newest scrape.
 
     """
-    db = boto3.resource("dynamodb")
+    config = Config(retries={"max_attempts": 10, "mode": "adaptive"})
+    db = boto3.resource("dynamodb", config=config)
     data: dict[str, Any] = get_data(event)
-
     table = db.Table(data.get("tablename", ""))
     return (
         data.get("jobs", []),
@@ -142,8 +163,11 @@ def get_diff(new_job: dict[str, Any], table, context: int = 3) -> str:
         response = table.get_item(Key={"id_icims": new_job["id_icims"]})
         old_job = response["Item"]
     except KeyError as e:
-        logger.info(f"Item not in database, {e}, storing as new job")
+        logger.debug(f"Item not in database, {e}, storing as new job")
         store_job(job=new_job, table=table)
+        return None
+    except ClientError as e:
+        logger.exception(e)
         return None
 
     changes = {}
@@ -159,7 +183,7 @@ def get_diff(new_job: dict[str, Any], table, context: int = 3) -> str:
 
 
 def get_status(
-    job_id: int, table, last_updated: datetime.date
+    job_id: int, table, last_updated: datetime, last_scrape: datetime
 ) -> Literal["new", "updated"] | None:
     """
     Get the status of the job with the specified ID.
@@ -171,22 +195,30 @@ def get_status(
     Args:
         job_id: The ID of the job.
         table: The table object to perform the get operation on.
-        last_scrape: The last scraped time to compare against.
+        last_updated: The last scraped time to compare against.
 
     Returns:
         The status of the job, which can be "new", "updated", or None.
 
     """
-
+    logger.debug("attempting to check table status...")
+    if table_empty:
+        logger.debug("table is empty, returning new")
+        return "new"
     try:
         response = table.get_item(Key={"id_icims": job_id})
-        if "Item" not in response or not response:
+        logger.debug(f"checking if job {job_id} is in database: {response}")
+        if not response or not response.get("Items", []):
             return "new"
-        if last_scrape := response["Item"]["last_scrape"]:
+        if last_scrape := response["Items"][0].get("last_scrape"):
             if datetime.fromisoformat(last_scrape) < last_updated:
+                logger.debug(f"job {job_id} is updated, returning updated")
                 return "updated"
+
     except ClientError as e:
-        logger.exception(e.response["Error"]["Message"])
+        if e.response["Error"]["Code"] == "ValidationException":
+            return "new"
+        log_client_error(error=e, func="get_status")
     return None
 
 
@@ -223,12 +255,22 @@ def store_job(job: dict[str, Any], table) -> None:
         None
 
     """
+    logger.debug(f"attempting to store job {job['id_icims']}")
     try:
         job = stringify_dates(job=job)
-        table.put_item(Item=job)
-        logger.info(f"Stored job with ID {job['id_icims']}")
+        response = table.put_item(
+            Item=job,
+            ReturnItemCollectionMetrics="SIZE",
+            ReturnValues="ALL_OLD",
+            ReturnValuesOnConditionCheckFailure="ALL_OLD",
+            ReturnConsumedCapacity="INDEXES",
+        )
+        logger.debug(
+            f"Response from attempt to store job {job['id_icims']}: \n {response}"
+        )
     except ClientError as e:
-        logger.exception(e.response["Error"]["Message"])
+        logger.error(f"Error storing job {job['id_icims']}:")
+        log_client_error(error=e, func="store_job")
 
 
 def set_dates(job: dict[str, Any]) -> datetime:
@@ -249,7 +291,7 @@ def set_dates(job: dict[str, Any]) -> datetime:
             if (updated_time_str.endswith("days") or updated_time_str.endswith("day"))
             else 0
         )
-        last_updated = datetime.now(timezone.utc).date() - timedelta(days=updated_time)
+        last_updated: datetime = today - timedelta(days=updated_time)
         return posted_date, last_updated, today
     return posted_date, posted_date, today
 
@@ -299,19 +341,27 @@ def update_and_store_jobs(
     for job in data:
         job["posted_date"], job["last_updated"], job["last_scrape"] = set_dates(job=job)
         job["job_path"] = f"https://amazon.jobs{job['job_path']}"
+        job["date_off_market"] = "NA"
         if status := get_status(
-            job_id=job["id_icims"], table=table, last_updated=job["last_updated"]
+            job_id=job["id_icims"],
+            table=table,
+            last_updated=job["last_updated"],
+            last_scrape=job["last_scrape"],
         ):
             if status == "new":
+                job["type"] = "scrape_record"
                 store_job(job=job, table=table)
                 new_or_updated_jobs.append(job)
             elif status == "updated":
                 if changes := get_diff(new_job=job, table=table):
                     job["changes"] = changes
                     store_job(job=job, table=table)
-                    new_or_updated_jobs.append(
-                        table.get_item(Key={"id_icims": job["id_icims"]})
-                    )
+                    try:
+                        new_or_updated_jobs.append(
+                            table.get_item(Key={"id_icims": job["id_icims"]})
+                        )
+                    except ClientError as e:
+                        log_client_error(error=e, func="update_and_store_jobs")
     return new_or_updated_jobs
 
 
@@ -331,19 +381,26 @@ def find_newest_scrape(table) -> datetime:
     Returns:
         datetime: The capture limit.
     """
-    if has_data := table.scan(ProjectionExpression="id_icims", Limit=1):
-        if "Items" not in has_data:
+    start_date: str = (today - timedelta(days=30)).isoformat()
+    logger.debug(f"attempting to find most recent scrape with start date {start_date}")
+    with contextlib.suppress(ClientError):
+        if table.item_count == 0 or table.table_size_bytes == 0:
+            logger.debug("table empty")
+            globals()["table_empty"] = True
             return today - timedelta(days=540)
-
-        response = table.scan(
+    try:
+        response = table.query(
             IndexName="last_scrape-index",
-            ProjectionExpression="last_scrape",
-            ScanIndexForward=False,  # False for descending order
+            KeyConditionExpression=Key("type").eq("scrape_record"),
+            ScanIndexForward=False,  # Descending order
             Limit=1,
         )
-
-    if items := response.get("Items", []):
-        return datetime.fromisoformat(items[0]["last_scrape"]).date()
+        logger.debug(f"last_scrape query response: {response}")
+        if items := response.get("Items", []):
+            logger.debug(f"found last_scrape: {items[0]['last_scrape']}")
+            return datetime.fromisoformat(items[0]["last_scrape"])
+    except ClientError as e:
+        log_client_error(error=e, func="find_newest_scrape")
     return today - timedelta(days=540)
 
 
@@ -396,6 +453,9 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
 
     """
     jobs, remaining_hits, table, more_jobs, newest_scrape = set_vars(event=event)
+    logger.info(
+        f"Job Store execution started. New jobs found: {len(jobs)}, remaining_hits: {remaining_hits}, newest_scrape: {newest_scrape}"
+    )
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
         if (
             len(new_jobs) == len(jobs)
@@ -419,7 +479,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
             "data": {
                 "new_jobs": new_jobs,
                 "more_jobs": more_jobs,
-                "newest_scrape": newest_scrape,
+                "newest_scrape": newest_scrape.isoformat(),
                 "remaining_hits": remaining_hits,
             }
             | {
@@ -459,7 +519,7 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
         None
     """
 
-    logger.info(f"job_store function execution started with event:\n {event}")
+    logger.debug(f"job_sfunction execution started with event:\n {event}")
     try:
         return store_to_db(event=event)
 
@@ -469,11 +529,10 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
         return {
             "status": {
                 "statusCode": 500,
-                "state": "InvokeJobScraper",
+                "state": "InvokeJobStore",
                 "errorFunc": context.function_name,
                 "errorType": type(e).__name__,
                 "errorMessage": str(e),
                 "stackTrace": traceback.format_exc(),
             },
-            "data": get_data(event=event),
-        }
+            "data": get_data(event=ev
