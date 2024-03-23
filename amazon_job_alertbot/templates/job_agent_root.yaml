@@ -714,6 +714,7 @@ Resources:
     DeletionPolicy: Delete
     Properties:
       QueueName: !Sub "${BaseName}-queue-${AWS::AccountId}.fifo"
+      ContentBasedDeduplication: true
       FifoQueue: true
       MessageRetentionPeriod: 160000
       VisibilityTimeout: 400
@@ -870,6 +871,7 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
+      Timeout: 15
       TracingConfig:
         Mode: Active
       Code:
@@ -905,6 +907,7 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
+      Timeout: 30
       TracingConfig:
         Mode: Active
       Code:
@@ -972,6 +975,7 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
+      Timeout: 60
       TracingConfig:
         Mode: Active
       Code:
@@ -1041,6 +1045,7 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
+      Timeout: 60
       TracingConfig:
         Mode: Active
       Tags:
@@ -1060,6 +1065,7 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
+      Timeout: 10
       TracingConfig:
         Mode: Active
       Code:
@@ -1261,7 +1267,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 60,
+              "TimeoutSeconds": 15,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],
@@ -1310,7 +1316,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 600,
+              "TimeoutSeconds": 30,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],
@@ -1381,7 +1387,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 600,
+              "TimeoutSeconds": 60,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],
@@ -1426,7 +1432,8 @@ Resources:
                       "Resource": "arn:aws:states:::sqs:sendMessage",
                       "Parameters": {
                         "QueueUrl": "${JobQueueUrl}",
-                        "MessageBody.$": "$.data.new_jobs"
+                        "MessageBody.$": "$.data.new_jobs",
+                        "MessageGroupId": "jobalerts"
                       },
                       "Retry": [
                         {
@@ -1510,7 +1517,7 @@ Resources:
                   "BackoffRate": 2
                 }
               ],
-              "TimeoutSeconds": 900,
+              "TimeoutSeconds": 60,
               "Catch": [
                 {
                   "ErrorEquals": ["States.ALL"],

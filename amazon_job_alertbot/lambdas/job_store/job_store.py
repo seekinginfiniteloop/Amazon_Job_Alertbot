@@ -439,6 +439,7 @@ def keep_keys(
             ]
         }
         keepers.append(new)
+    return keepers
 
 
 def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
@@ -457,6 +458,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
         f"Job Store execution started. New jobs found: {len(jobs)}, remaining_hits: {remaining_hits}, newest_scrape: {newest_scrape}"
     )
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
+        new_jobs = keep_keys(new_jobs=new_jobs)
         if (
             len(new_jobs) == len(jobs)
             or min(datetime.fromisoformat(date) for date in new_jobs["last_updated"])
@@ -502,7 +504,8 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
         | {
             k: v
             for k, v in get_data(event=event).items()
-            if k not in ["new_jobs", "more_jobs", "remaining_hits", "newest_scrape"]
+            if k
+            not in ["new_jobs", "more_jobs", "remaining_hits", "newest_scrape", "jobs"]
         },
     }
 
@@ -519,7 +522,7 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
         None
     """
 
-    logger.debug(f"job_sfunction execution started with event:\n {event}")
+    logger.debug(f"job_store function execution started with event:\n {event}")
     try:
         return store_to_db(event=event)
 
@@ -535,4 +538,5 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
                 "errorMessage": str(e),
                 "stackTrace": traceback.format_exc(),
             },
-            "data": get_data(event=ev
+            "data": get_data(event=event),
+        }
