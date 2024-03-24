@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import sys
 import traceback
 from datetime import datetime, timezone
 from logging import Logger
@@ -8,8 +9,8 @@ from re import Match, Pattern
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 logger: Logger = logging.getLogger(name="sender")
 logger.setLevel(level="DEBUG")
@@ -22,7 +23,25 @@ sqs = boto3.client("sqs", config=config)
 sns = boto3.client("sns", config=config)
 
 
-def get_data(
+def log_client_error(error: Exception, func: str) -> None:
+    """
+    Logs the client error message.
+
+    Args:
+        error (Exception): The error to log.
+        func (str): The function that threw the error.
+    """
+    logger.error(f"Error in {func}: {error}")
+    logger.error(f"Error code: {error.response['Error']['Code']}")
+    logger.error(f"Error message: {error.response["Error"]["Message"]}")
+    logger.error(f"Error RequestID: {error.response["ResponseMetadata"]["RequestId"]}")
+    logger.error(
+        f"Error HTTPStatusCode: {error.response['ResponseMetadata']['HTTPStatusCode']}"
+    )
+    logger.error(f"Complete error response: {error.response}")
+
+
+def get_params(
     event: dict[str, Any],
 ) -> dict[str, Any]:
     """
@@ -36,8 +55,7 @@ def get_data(
         dict[Any, Any]: The parsed dictionary.
 
     """
-    payload = event.get("Payload", {}) or event
-    return payload.get("data", {})
+    return event.get("Payload", {}) or event
 
 
 class Message:
@@ -85,16 +103,8 @@ class Message:
             f"initializing Message with {len(self.jobs)}, \n  params: {self.params}, \n  topic_arn: {self.topic_arn}"
         )
         self.subject: str = self.assemble_message(params.get("subject", ""))
-        self.default = self.assemble_message(params.get("default_intro", "")) + "".join(
-            [self.assemble_message(params.get("default_entry", "")) for _ in jobs]
-        )
-        self.email = (
-            self.assemble_message(params.get("email_intro", ""))
-            + "".join(
-                [self.assemble_message(params.get("email_entry", "")) for _ in jobs]
-            )
-            + self.assemble_message(params.get("email_outro", ""))
-        )
+        self.default: str = self.build_default()
+        self.email = self.build_email()
         logger.debug(f"Message assembled email: {self.email}")
         self.sms: str = "".join(
             [self.assemble_message(params.get("sms", "")) for _ in self.jobs]
@@ -109,12 +119,14 @@ class Message:
             dict[str, Any]: A dictionary with keys representing different message formats
             (default, email, sms, sqs) and corresponding values.
         """
-        return {
-            "default": self.default,
-            "email": self.email,
-            "sms": self.sms,
-            "sqs": self.jobs,
-        }
+        return json.dumps(
+            {
+                "default": self.default,
+                "email": self.email,
+                "sms": self.sms,
+                "sqs": self.jobs,
+            }
+        )
 
     def publish(self) -> Any:
         """
@@ -124,11 +136,81 @@ class Message:
             Any: The response from the publish operation.
         """
         logger.debug(f"Publishing message to topic {self.topic_arn}")
-        return sns.publish(
-            topicArn=self.topic_arn,
-            Message=self.message,
-            MessageStructure="json",
+        if sys.getsizeof(self.message) > 256000:
+            logger.warning(
+                "Message size exceeds 256KB; attempting to publish with extended publishing to S3."
+            )
+            return self.publish_to_s3()
+
+        try:
+            return sns.publish(
+                TopicArn=self.topic_arn,
+                Message=self.message,
+                MessageStructure="json",
+            )
+        except ClientError as e:
+            log_client_error(e, "publish")
+            raise e
+
+    def get_s3_params(self) -> tuple[Any, str]:
+        """
+        Returns the S3 parameters for publishing the message to S3.
+
+        Returns:
+            tuple[Any, str]: A tuple containing the S3 object, and tag key.
+        """
+        s3 = boto3.resource("s3")
+        bucket_name = self.params["s3_bucket"]
+        bucket_key_prefix = self.params["s3_key_prefix"]
+        key = f"{bucket_key_prefix}message_{today.strftime(format='%Y%m%d')}.html"
+        s3_object = s3.Object(bucket_name, key)
+        tag_key = self.params["tag_key"]
+        return s3_object, tag_key
+
+    def save_to_s3(self, s3_object, tag_key) -> str:
+        s3_object.put(
+            Body=self.email,
+            ContentType="application/json",
+            BucketKeyEnabled=True,
+            Tagging=f"{tag_key}={tag_key}",
         )
+        logger.debug(
+            f"Message published to S3 bucket {s3_object.bucket_name} with key {s3_object.key}."
+        )
+        return s3_object.get()["ResponseMetadata"]["HTTPHeaders"]["location"]
+
+    def extended_message(self, s3_location) -> str:
+        """
+        Returns a message indicating that the job notification exceeded the maximum size and provides the S3 location to view it.
+
+        Args:
+            s3_location (str): The S3 location where the full job notification can be viewed.
+
+        Returns:
+            str: The message with the S3 location.
+        """
+        return f"Your job notification exceeded the maximum message size. You may see it at: {s3_location}"
+
+    def publish_to_s3(self) -> str:
+        """
+        Publishes the message to an S3 bucket.
+
+        Returns:
+            str: The URL of the S3 object containing the message.
+        """
+        try:
+            logger.debug("Attempting to publish message to S3.")
+            s3_object, tag_key = self.get_s3_params()
+            location = self.save_to_s3(s3_object, tag_key)
+            message = self.extended_message(location)
+            return sns.publish(
+                TopicArn=self.topic_arn,
+                Message=message,
+            )
+
+        except ClientError as e:
+            log_client_error(e, "publish_to_s3")
+            raise e
 
     def replacer(self, match: Match[str]) -> str:
         """
@@ -175,6 +257,38 @@ class Message:
 
         return "".join(filter(None, map(replace_placeholders, parts)))
 
+    def build_email(self) -> str:
+        """
+        Builds an email message by assembling the email intro, each email entry for the jobs, and the email outro.
+
+        Returns:
+            str: The email message string.
+        """
+        return (
+            self.assemble_message(self.params.get("email_intro", ""))
+            + "".join(
+                [
+                    self.assemble_message(self.params.get("email_entry", ""))
+                    for _ in self.jobs
+                ]
+            )
+            + self.assemble_message(self.params.get("email_outro", ""))
+        )
+
+    def build_default(self) -> str:
+        """
+        Builds a default message by assembling the default intro with each default entry for the jobs.
+
+        Returns:
+            str: The default message string.
+        """
+        return self.assemble_message(self.params.get("default_intro", "")) + "".join(
+            [
+                self.assemble_message(self.params.get("default_entry", ""))
+                for _ in self.jobs
+            ]
+        )
+
 
 def retrieve_queue(params: dict[str, Any]) -> list[Any]:
     """
@@ -190,24 +304,36 @@ def retrieve_queue(params: dict[str, Any]) -> list[Any]:
     jobs = []
     logger.debug("Polling Amazon jobs SQS queue")
     while True:
-        response = sqs.receive_message(
-            QueueUrl=queue_url,
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=10,
-            VisibilityTimeout=360,
-        )
-
-        messages = response.get("Messages", [])
-        if not messages:
-            break
-
-        for message in messages:
-            message_body = json.loads(message["Body"])
-            jobs.extend(message_body)
-            sqs.delete_message(
-                QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"]
+        try:
+            response = sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=10,
+                WaitTimeSeconds=10,
+                VisibilityTimeout=360,
             )
-            logger.debug(f"Retrieved and deleted message {message['ReceiptHandle']}")
+
+            messages = response.get("Messages", [])
+            if not messages:
+                break
+
+            for message in messages:
+                message_body = json.loads(message["Body"])
+                jobs.extend(message_body)
+
+                try:
+                    sqs.delete_message(
+                        QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"]
+                    )
+                    logger.debug(
+                        f"Retrieved and deleted message {message['ReceiptHandle']}"
+                    )
+                except ClientError as e:
+                    log_client_error(e, "retrieve_queue-delete_message")
+
+        except ClientError as e:
+            log_client_error(e, "retrieve_queue")
+            raise e
+
     logger.info(
         f"Retrieved {len(jobs)} jobs from Amazon jobs queue. Checking for empty queue."
     )
@@ -224,15 +350,19 @@ def messages_in_queue(queue_url: str) -> bool:
     Returns:
         bool: True if there are messages in the queue, False otherwise.
     """
-    queue = sqs.get_queue_attributes(
-        QueueUrl=queue_url,
-        AttributeNames=[
-            "ApproximateNumberOfMessages",
-            "ApproximateNumberOfMessagesDelayed",
-            "ApproximateNumberOfMessagesNotVisible",
-        ],
-    )
-    return any(queue["Attributes"].values())
+    try:
+        queue = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=[
+                "ApproximateNumberOfMessages",
+                "ApproximateNumberOfMessagesDelayed",
+                "ApproximateNumberOfMessagesNotVisible",
+            ],
+        )
+        return any(queue["Attributes"].values())
+
+    except ClientError as e:
+        log_client_error(e, "messages_in_queue")
 
 
 def purge_queue(queue_url: str) -> None:
@@ -242,12 +372,19 @@ def purge_queue(queue_url: str) -> None:
     Args:
         queue_url: The URL of the queue to purge.
     """
-    logger.debug("Purging Amazon jobs SQS queue")
-    sqs.purge_queue(QueueUrl=queue_url)
-    logger.debug("Amazon jobs SQS queue purged")
+    try:
+        logger.debug("Purging Amazon jobs SQS queue")
+        response = sqs.purge_queue(QueueUrl=queue_url)
+        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
+            logger.error(f"Error purging Amazon jobs SQS queue: {response}")
+        else:
+            logger.debug("Amazon jobs SQS queue purged")
+
+    except ClientError as e:
+        log_client_error(e, "purge_queue")
 
 
-def send_jobs(event: dict[str, Any]) -> dict[str, int]:
+def send_jobs(event: dict[str, Any]) -> dict[str, dict[int | str] | dict[str, None]]:
     """
     Sends jobs based on the provided event dictionary.
 
@@ -255,17 +392,18 @@ def send_jobs(event: dict[str, Any]) -> dict[str, int]:
         event: The event dictionary containing the necessary parameters.
 
     Returns:
-        dict[str, int]: A dictionary with the status code indicating the result of the job sending.
+        dict[str, int | None | str]: A dictionary with the status code indicating the result of the job sending.
     """
-    data = get_data(event=event)
-    params = data.get("sendparams", {})
+    params = get_params(event=event)
+
     jobs = retrieve_queue(params=params)
-    if messages_in_queue(queue_url=params["queue_url"]):
+    if messages_in_queue(queue_url=params["sqs_queue_url"]):
         jobs.extend(retrieve_queue(params=params))
-    purge_queue(queue_url=params["queue_url"])
+    purge_queue(queue_url=params["sqs_queue_url"])
     Message(jobs=jobs, params=params).publish()
     logger.info("Lambda Sender execution completed")
-    return ({"status": {"statusCode": 200, "state": "InvokeJobSender"}},)
+    status = {"statusCode": 200, "state": "InvokeJobSender"}
+    return {"status": status, "data": None}
 
 
 def job_sender_handler(
@@ -288,7 +426,7 @@ def job_sender_handler(
         return send_jobs(event=event)
 
     except Exception as e:
-        logger.error(f"Error occurred in Lambda var_replacer: {e}")
+        logger.error(f"Error occurred in Lambda job_sender: {e}")
         return {
             "status": {
                 "statusCode": 500,
@@ -298,5 +436,5 @@ def job_sender_handler(
                 "errorMessage": str(e),
                 "stackTrace": traceback.format_exc(),
             },
-            "data": get_data(event=event),
+            "data": get_params(event=event),
         }

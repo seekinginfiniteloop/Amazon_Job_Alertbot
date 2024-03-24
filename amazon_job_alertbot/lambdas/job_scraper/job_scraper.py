@@ -51,6 +51,9 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     logger.debug(f"params: {params}")
     remaining_hits = data.get("remaining_hits")
     newest_scrape = data.get("newest_scrape")
+    if newest_scrape:
+        newest_scrape = datetime.fromisoformat(newest_scrape)
+
     return params, remaining_hits, newest_scrape
 
 
@@ -229,15 +232,13 @@ def get_date_updated(job: dict[str, str | int | None]) -> datetime:
     Returns:
         datetime.date: The update date of the job.
     """
-    posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y").date()
+    posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y")
     if updated_time_str := job.get("updated_time"):
-        if match := re.match(
-            pattern=r"^(\d{1,3})", string=updated_time_str
-        ):
+        if match := re.match(pattern=r"^(\d{1,3})", string=updated_time_str):
             updated_days = int(match[0])
         else:
             updated_days = 0
-        return datetime.now(timezone.utc).date() - timedelta(days=updated_days)
+        return datetime.now(timezone.utc) - timedelta(days=updated_days)
     return posted_date
 
 
@@ -283,6 +284,9 @@ def scrape(
         dict: A dictionary containing the scraped jobs, remaining hits, and next offset.
 
     """
+    if jobs_found := get_data(event=event).get("jobs_found"):
+        logger.info(f"Found {jobs_found} jobs in previous scrape. Resetting.")
+        jobs_found = 0
     stop_signal = False
     params, remaining_hits, limit_date = set_vars(event=event)
     data, remainder, next_offset = fetch_jobs(

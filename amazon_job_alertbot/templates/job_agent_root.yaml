@@ -556,6 +556,20 @@ Resources:
               - s3:GetObjectVersion
             Resource:
               - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/templates/*"
+          - Effect: Allow
+            Sid: AllowLambdaSenderAccessforSNS
+            Principal:
+              Service: !Sub "lambda.${AWS::URLSuffix}"
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetObjectAttributes
+              - s3:GetObjectTagging
+              - s3:PutObjectTagging
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/SNSExtendedMessages/*"
   JobAgentLambdaBaseRole:
     Type: AWS::IAM::Role
     Condition: CreateChildStack
@@ -746,10 +760,67 @@ Resources:
               - sqs.GetQueueAttributes
               - sqs.PurgeQueue
               - sqs.ReceiveMessage
-            Resource: !GetAtt "JobQueue.Arn"
+            Resource:
+              - !GetAtt "JobQueue.Arn"
+              - !Sub "${JobQueue.Arn}/*"
             Principal:
               Service:
                 - !Sub "lambda.${AWS::URLSuffix}"
+          - Sid: DLQSendAccess
+            Effect: Allow
+            Principal:
+              Service:
+                - !Sub "sqs.${AWS::URLSuffix}"
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt "JobQueue.Arn"
+              - !Sub "${JobQueue.Arn}/*"
+  JobSubscriberDLQ:
+    Type: AWS::SQS::Queue
+    Condition: CreateChildStack
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      QueueName: !Sub "${BaseName}-dlq-${AWS::AccountId}"
+      MessageRetentionPeriod: 160000
+      VisibilityTimeout: 400
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+  JobSubscriberDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Condition: CreateChildStack
+    Properties:
+      Queues:
+        - !Ref "JobSubscriberDLQ"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: LambdaSQSJobQueueAccess
+            Effect: Allow
+            Action:
+              - sqs.DeleteMessage
+              - sqs.GetQueueAttributes
+              - sqs.PurgeQueue
+              - sqs.ReceiveMessage
+              - sqs:StartMessageMoveTask
+              - sqs:CancelMessageMoveTask
+              - sqs:ListMessageMoveTasks
+            Resource: !GetAtt "JobSubscriberDLQ.Arn"
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+          - Sid: DLQSendAccess
+            Effect: Allow
+            Principal:
+              Service: !Sub "sns.${AWS::URLSuffix}"
+            Action:
+              - sqs:SendMessage
+              - sqs:GetQueueAttributes
+              - sqs:StartMessageMoveTask
+              - sqs:ListMessageMoveTasks
+            Resource: !GetAtt "JobSubscriberDLQ.Arn"
   JobSubscriberTopic:
     Type: AWS::SNS::Topic
     Condition: CreateChildStack
@@ -769,6 +840,8 @@ Resources:
       Endpoint: !Ref YourEmail
       Protocol: email
       TopicArn: !Ref "JobSubscriberTopic"
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt "JobSubscriberDLQ.Arn"
   JobSubscriberTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Condition: CreateChildStack
@@ -1010,10 +1083,19 @@ Resources:
                 Sid: AllowLambdaSenderAgentSQSAccess
                 Action:
                   - sqs:DeleteMessage
+                  - sqs:SendMessage
                   - sqs:GetQueueAttributes
                   - sqs:PurgeQueue
                   - sqs:ReceiveMessage
-                Resource: !GetAtt "JobQueue.Arn"
+                  - sqs:StartMessageMoveTask
+                  - sqs:CancelMessageMoveTask
+                  - sqs:ListMessageMoveTasks
+                  - sqs:ListDeadLetterSourceQueues
+                Resource:
+                  - !GetAtt "JobQueue.Arn"
+                  - !GetAtt "JobSubscriberDLQ.Arn"
+                  - !Sub "${JobQueue.Arn}/*"
+                  - !Sub "${JobSubscriberDLQ.Arn}/*"
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
@@ -1025,6 +1107,18 @@ Resources:
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
+              - Effect: Allow
+                Sid: AllowLambdaSenderS3ObjectAccessForSNS
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObjectAttributes
+                  - s3:GetObjectTagging
+                  - s3:PutObjectTagging
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${JobAgentBucket}/SNSExtendedMessages/*"
       Tags:
         - Key: !Ref "TagKey"
           Value: !Ref TagKey
@@ -1203,6 +1297,7 @@ Resources:
         JobQueueUrl: !Ref "JobQueue"
         SNSJobSubscriberTopicArn: !Ref "JobSubscriberTopic"
         SNSJobSubscriberTopicName: !GetAtt "JobSubscriberTopic.TopicName"
+        Base: !Ref "BaseName"
       StateMachineType: STANDARD
       Tags:
         - Key: !Ref "TagKey"
@@ -1219,7 +1314,7 @@ Resources:
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "InputPath": "$.detail",
                     "Parameters": {
-                        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:job-agent-var-replacer",
+                        "FunctionName": "${VarReplacerFunctionArn}",
                         "Payload": {
                             "data": {
                                 "replacements.$": "$.replacements",
@@ -1249,7 +1344,7 @@ Resources:
                                 "States.ALL"
                             ],
                             "ResultPath": "$.errorInfo",
-                            "Next": "HandleError"
+                            "Next": "FailedExecution"
                         }
                     ],
                     "ResultSelector": {
@@ -1260,13 +1355,24 @@ Resources:
                     },
                     "ResultPath": "$.params",
                     "OutputPath": "$.params.desiredOutput",
-                    "Next": "InvokeJobScraper"
+                    "Next": "CheckForErrorInVarRep"
                 },
+                "CheckForErrorInVarRep": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.status.statusCode",
+                            "NumericEquals": 500,
+                            "Next": "FailedExecution"
+                        }
+                    ],
+                    "Default": "InvokeJobScraper"
+                    },
                 "InvokeJobScraper": {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
-                        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:job-agent-job-scraper",
+                        "FunctionName": "${JobAgentScraperFunctionArn}",
                         "Payload.$": "$"
                     },
                     "Retry": [
@@ -1306,6 +1412,11 @@ Resources:
                     "Type": "Choice",
                     "Choices": [
                         {
+                            "Variable": "$.status.statusCode",
+                            "NumericEquals": 500,
+                            "Next": "FailedExecution"
+                        },
+                        {
                             "Variable": "$.data.jobs_found",
                             "NumericGreaterThan": 0,
                             "Next": "PassToStore"
@@ -1318,8 +1429,8 @@ Resources:
                     "Parameters": {
                         "data.$": "$.data",
                         "tableInfo": {
-                            "tablename": "job-agent-store",
-                            "tablearn": "arn:aws:dynamodb:us-east-1:019703030783:table/job-agent-store"
+                            "tablename": "${JobAgentStoreTableName}",
+                            "tablearn": "${JobAgentStoreTableArn}"
                         },
                         "status.$": "$.status"
                     },
@@ -1331,7 +1442,7 @@ Resources:
                     "Type": "Task",
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
-                        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:job-agent-job-store",
+                        "FunctionName": "${JobAgentStoreFunctionArn}",
                         "Payload": {
                             "data.$": "States.JsonMerge($.data, $.tableInfo, false)",
                             "status.$": "$.status"
@@ -1374,6 +1485,11 @@ Resources:
                     "Type": "Choice",
                     "Choices": [
                         {
+                          "Variable": "$.status.statusCode",
+                          "NumericEquals": 500,
+                          "Next": "FailedExecution"
+                        },
+                        {
                             "Variable": "$.data.new_jobs",
                             "IsPresent": true,
                             "Next": "SplitBranch"
@@ -1389,7 +1505,7 @@ Resources:
                                     "BooleanEquals": true
                                 }
                             ],
-                            "Next": "PassToSender"
+                            "Next": "InvokeSender"
                         }
                     ],
                     "Default": "EndState"
@@ -1405,9 +1521,9 @@ Resources:
                                     "InputPath": "$.data.new_jobs",
                                     "Resource": "arn:aws:states:::sqs:sendMessage",
                                     "Parameters": {
-                                        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/019703030783/job-agent-queue-019703030783.fifo",
+                                        "QueueUrl": "${JobQueueUrl}",
                                         "MessageBody.$": "$",
-                                        "MessageGroupId": "jobsalerts"
+                                        "MessageGroupId": "${Base}"
                                     },
                                     "Retry": [
                                         {
@@ -1431,6 +1547,11 @@ Resources:
                 "EvalStoreResponse": {
                     "Type": "Choice",
                     "Choices": [
+                        {
+                            "Variable": "$.status.statusCode",
+                            "NumericEquals": 500,
+                            "Next": "FailedExecution"
+                        },
                         {
                             "And": [
                                 {
@@ -1457,32 +1578,20 @@ Resources:
                             },
                             {
                             "Variable": "$.data.jobs_to_send",
-                            "BooleanEquals": true}
+                            "BooleanEquals": true
+                            }
                             ],
-                            "Next": "PassToSender"
+                            "Next": "InvokeSender"
                         }
                     ],
                     "Default": "EndState"
                 },
-                "PassToSender": {
-                    "Type": "Pass",
-                    "Parameters": {
-                        "snsInfo": {
-                            "snstopic": "job-agent-topic",
-                            "snstopicarn": "arn:aws:sns:us-east-1:019703030783:job-agent-topic"
-                        }
-                    },
-                    "Result": {
-                        "status.$": "$.status",
-                        "data.$": "States.JsonMerge($.data, $.snsInfo, false)"
-                    },
-                    "Next": "InvokeSender"
-                },
                 "InvokeSender": {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::lambda:invoke",
+                    "InputPath": "$.data.sendparams",
                     "Parameters": {
-                        "FunctionName": "arn:aws:lambda:us-east-1:019703030783:function:job-agent-job-sender",
+                        "FunctionName": "${JobAgentSenderFunctionArn}",
                         "Payload.$": "$"
                     },
                     "Retry": [
@@ -1505,10 +1614,29 @@ Resources:
                                 "States.ALL"
                             ],
                             "ResultPath": "$.errorInfo",
-                            "Next:" "FailedExecution"
+                            "Next": "FailedExecution"
                         }
                     ],
-                    "Next": "EndState"
+                    "ResultSelector": {
+                      "results": {
+                        "status.$": "$.Payload.status",
+                        "data.$": "$.Payload.data"
+                        }
+                    },
+                    "ResultPath": "$.params",
+                    "OutputPath": "$.params.results",
+                    "Next": "CheckForFailure"
+                },
+                "CheckForFailure": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.status.statusCode",
+                            "NumericEquals": 500,
+                            "Next": "FailedExecution"
+                        }
+                    ],
+                    "Default": "EndState"
                 },
                 "EndState": {
                     "Type": "Succeed"
@@ -1602,11 +1730,15 @@ Resources:
                 },
                 "DBSettings": {
                   "db_name": "dynamodb",
-                  "table_name": "${JobAgentStoreTable}",
-                  "sqs_queue_url": "${JobQueue}"
+                  "table_name": "${JobAgentStoreTable}"
                 },
                 "SendSettings": {
+                  "sqs_queue_url": "${JobQueue}",
+                  "topic_name": "${JobSubscriberTopic.TopicName}",
                   "topic_arn": "${JobSubscriberTopic}",
+                  "s3_bucket": "${JobAgentBucket}",
+                  "s3_key_prefix": "SNSExtendedMessages/",
+                  "tag_key": "${TagKey}",
                   "subject": "Your Amazon Jobs For {{today}}",
                   "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
                   "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",

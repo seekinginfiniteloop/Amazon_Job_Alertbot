@@ -457,6 +457,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     logger.info(
         f"Job Store execution started. New jobs found: {len(jobs)}, remaining_hits: {remaining_hits}, newest_scrape: {newest_scrape}"
     )
+    newest_scrape: datetime = newest_scrape if isinstance(newest_scrape, datetime) else datetime.fromisoformat(newest_scrape)
     if new_jobs := update_and_store_jobs(data=jobs, table=table):
         new_jobs = keep_keys(new_jobs=new_jobs)
         if (
