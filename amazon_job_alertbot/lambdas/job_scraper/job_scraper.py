@@ -232,7 +232,7 @@ def get_date_updated(job: dict[str, str | int | None]) -> datetime:
     posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y").date()
     if updated_time_str := job.get("updated_time"):
         if match := re.match(
-            pattern=r"^(\d{1,3})\s[days]{3,4}$", string=updated_time_str
+            pattern=r"^(\d{1,3})", string=updated_time_str
         ):
             updated_days = int(match[0])
         else:

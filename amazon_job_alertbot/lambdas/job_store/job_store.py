@@ -479,6 +479,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
         return {
             "status": {"statusCode": 200, "state": "InvokeJobStore"},
             "data": {
+                "jobs_to_send": True,
                 "new_jobs": new_jobs,
                 "more_jobs": more_jobs,
                 "newest_scrape": newest_scrape.isoformat(),
@@ -487,7 +488,14 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
             | {
                 k: v
                 for k, v in get_data(event=event).items()
-                if k not in ["new_jobs", "more_jobs", "remaining_hits", "newest_scrape"]
+                if k
+                not in [
+                    "new_jobs",
+                    "more_jobs",
+                    "remaining_hits",
+                    "newest_scrape",
+                    "jobs",
+                ]
             },
         }
     logger.info(
@@ -496,7 +504,6 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     return {
         "status": {"statusCode": 200, "state": "InvokeJobStore"},
         "data": {
-            "new_jobs": [],
             "more_jobs": more_jobs,
             "newest_scrape": None,
             "remaining_hits": 0,
