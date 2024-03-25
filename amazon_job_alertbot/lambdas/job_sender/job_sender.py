@@ -143,6 +143,8 @@ class Message:
             return self.publish_to_s3()
 
         try:
+            logger.info(f"Publishing message to topic {self.topic_arn}")
+            logger.debug(f"Message: {self.message}")
             return sns.publish(
                 TopicArn=self.topic_arn,
                 Message=self.message,

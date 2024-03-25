@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from logging import Logger
@@ -53,6 +54,8 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     newest_scrape = data.get("newest_scrape")
     if newest_scrape:
         newest_scrape = datetime.fromisoformat(newest_scrape)
+    if next_offset := data.get("next_offset"):
+        params["criteria"]["offset"] = next_offset
 
     return params, remaining_hits, newest_scrape
 
@@ -111,9 +114,9 @@ def set_params(
     """
     logger.debug(f"search_params: {search_params}")
     lang_code = search_params.get("lang_code", "en")
-    facets = search_params.get("facets", {})
-    criteria = search_params.get("criteria", {})
-    headers = search_params.get("headers", {})
+    facets = search_params["facets"]
+    criteria = search_params["criteria"]
+    headers = search_params["headers"]
     base_url = f"https://amazon.jobs/{lang_code}"
     session = requests.Session()
     init_headers = {"User-Agent": headers.get("User-Agent"), "Connection": "keep-alive"}
@@ -154,7 +157,7 @@ def fetch_job_data(
         logger.exception(
             f"Error: Connection or timeout error. Routing to handler for retry: {e}"
         )
-        return {e}
+        return e
     except requests.exceptions.RequestException as e:
         logger.exception(f"Error: Unexpected error. {e}")
         raise e
@@ -295,17 +298,12 @@ def scrape(
     if isinstance(
         data, (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError)
     ):
-        return {
-            "status": {
-                "statusCode": 500,
-                "state": "InvokeJobScraper",
-                "errorFunc": context.function_name,
-                "errorType": type(data).__name__,
-                "errorMessage": data,
-                "stackTrace": traceback.format_exc(),
-            },
-            "data": get_data(event=event),
-        }
+        logger.warning("Received timeout or connection error. Retrying in 10 seconds.")
+        time.sleep(10)
+        logger.info("Retrying scrape.")
+        data, remainder, next_offset = fetch_jobs(
+            search_params=params, remaining_hits=remaining_hits
+        )
 
     stop_signal: bool = check_for_stop_signal(
         data=data, remaining_hits=remainder, limit_date=limit_date

@@ -11,7 +11,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(name="amzn_job_store")
-logger.setLevel(level="DEBUG")
+logger.setLevel(level="INFO")
 
 
 today = datetime.now(timezone.utc)

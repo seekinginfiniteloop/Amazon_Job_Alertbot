@@ -744,7 +744,23 @@ Resources:
       PolicyDocument:
         Version: 2012-10-17
         Statement:
-          - Sid: StateMachineQueueSendAccess
+          - Sid: CFnUserAccess
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Select
+                  - 0
+                  - !Ref "UserArns"
+                - !Select
+                  - 1
+                  - !Ref "UserArns"
+              Service:
+                - !Sub "cloudformation.${AWS::URLSuffix}"
+            Action:
+              - sqs:*
+            Resource:
+              - !GetAtt "JobQueue.Arn"
+          - Sid: StateSendAccess
             Effect: Allow
             Principal:
               Service:
@@ -753,29 +769,32 @@ Resources:
               - sqs:SendMessage
             Resource:
               - !GetAtt "JobQueue.Arn"
-          - Sid: LambdaSQSJobQueueAccess
+          - Sid: LambdaSQSAccess
             Effect: Allow
-            Action:
-              - sqs.DeleteMessage
-              - sqs.GetQueueAttributes
-              - sqs.PurgeQueue
-              - sqs.ReceiveMessage
-            Resource:
-              - !GetAtt "JobQueue.Arn"
-              - !Sub "${JobQueue.Arn}/*"
             Principal:
               Service:
                 - !Sub "lambda.${AWS::URLSuffix}"
-          - Sid: DLQSendAccess
+            Action:
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+              - sqs:PurgeQueue
+              - sqs:ReceiveMessage
+            Resource:
+              - !GetAtt "JobQueue.Arn"
+          - Sid: SQSDLQAccess
             Effect: Allow
             Principal:
               Service:
                 - !Sub "sqs.${AWS::URLSuffix}"
             Action:
+              - sqs:*Move*
+              - sqs:ReceiveMessage
               - sqs:SendMessage
             Resource:
               - !GetAtt "JobQueue.Arn"
-              - !Sub "${JobQueue.Arn}/*"
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt "JobSubscriberDLQ.Arn"
   JobSubscriberDLQ:
     Type: AWS::SQS::Queue
     Condition: CreateChildStack
@@ -797,30 +816,36 @@ Resources:
       PolicyDocument:
         Version: 2012-10-17
         Statement:
-          - Sid: LambdaSQSJobQueueAccess
+          - Sid: CFnUserAccess
             Effect: Allow
+            Principal:
+              AWS:
+                - !Select
+                  - 0
+                  - !Ref "UserArns"
+                - !Select
+                  - 1
+                  - !Ref "UserArns"
+              Service:
+                - !Sub "cloudformation.${AWS::URLSuffix}"
             Action:
-              - sqs.DeleteMessage
-              - sqs.GetQueueAttributes
-              - sqs.PurgeQueue
-              - sqs.ReceiveMessage
-              - sqs:StartMessageMoveTask
-              - sqs:CancelMessageMoveTask
-              - sqs:ListMessageMoveTasks
-            Resource: !GetAtt "JobSubscriberDLQ.Arn"
+              - sqs:*
+            Resource:
+              - !GetAtt "JobSubscriberDLQ.Arn"
+          - Sid: SNSAccess
+            Effect: Allow
             Principal:
               Service:
-                - !Sub "lambda.${AWS::URLSuffix}"
-          - Sid: DLQSendAccess
-            Effect: Allow
-            Principal:
-              Service: !Sub "sns.${AWS::URLSuffix}"
+                - !Sub "sns.${AWS::URLSuffix}"
             Action:
+              - sqs:*Move*
+              - sqs:ReceiveMessage
               - sqs:SendMessage
-              - sqs:GetQueueAttributes
-              - sqs:StartMessageMoveTask
-              - sqs:ListMessageMoveTasks
-            Resource: !GetAtt "JobSubscriberDLQ.Arn"
+            Resource:
+              - !GetAtt "JobSubscriberDLQ.Arn"
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref "JobSubscriberTopic"
   JobSubscriberTopic:
     Type: AWS::SNS::Topic
     Condition: CreateChildStack
@@ -864,8 +889,15 @@ Resources:
             Resource:
               - !Ref "JobSubscriberTopic"
           - Effect: Allow
-            Sid: CloudFormationSNSJobSubAccess
+            Sid: CFandOwnerPermissions
             Principal:
+              AWS:
+                - !Select
+                  - 0
+                  - !Ref "UserArns"
+                - !Select
+                  - 1
+                  - !Ref "UserArns"
               Service:
                 - !Sub "cloudformation.${AWS::URLSuffix}"
             Action:
@@ -877,6 +909,8 @@ Resources:
               - sns:ListTagsForResource
               - sns:PutDataProtectionPolicy
               - sns:Subscribe
+              - sns:Publish
+              - sns:RemovePermission
             Resource:
               - !Ref "JobSubscriberTopic"
   JobAgentBaseLogAndTracePolicy:
@@ -1284,7 +1318,7 @@ Resources:
           - CloudWatchLogsLogGroup:
               LogGroupArn: !GetAtt "JobAgentStateMachineLogGroup.Arn"
         IncludeExecutionData: true
-        Level: ALL
+        Level: ERROR
       TracingConfiguration:
         Enabled: true
       DefinitionSubstitutions:
@@ -1567,7 +1601,7 @@ Resources:
                                     "IsString": true
                                 }
                             ],
-                            "Next": "InvokeJobScraper"
+                            "Next": "FilterBackToJobScraper"
                         },
                         {
                             "And": [
@@ -1585,6 +1619,31 @@ Resources:
                         }
                     ],
                     "Default": "EndState"
+                },
+                "FilterBackToJobScraper":{
+                    "Type": "Pass",
+                    "InputPath": "$",
+                    "Parameters": {
+                      "data": {
+                        "jobs_to_send.$": "$.data.jobs_to_send",
+                        "newest_scrape.$": "$.data.newest_scrape",
+                        "remaining_hits.$": "$.data.remaining_hits",
+                        "next_offset.$": "$.data.next_offset",
+                        "searchparams.$": "$.data.searchparams",
+                        "dbparams.$": "$.data.dbparams",
+                        "sendparams.$":"$.data.sendparams"
+                        },
+                      "status.$": "$.status"
+                    },
+                    "Result": {
+                      "mergedData": {
+                        "data.$": "$.data",
+                        "status.$": "$.status"
+                        }
+                    },
+                    "ResultPath": "$.mergedData",
+                    "OutputPath": "$.mergedData",
+                    "Next": "InvokeJobScraper"
                 },
                 "InvokeSender": {
                     "Type": "Task",

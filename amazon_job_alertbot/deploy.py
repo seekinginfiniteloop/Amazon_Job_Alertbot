@@ -95,6 +95,13 @@ def parse_cli() -> dict[str, str]:
         help="create a new stack, ignoring existing stacks",
         dest="newstack",
     )
+    parser.add_argument(
+        "--log-retention",
+        type=int,
+        help="number of days to retain logs. Defaults to 14 days.",
+        default=14,
+        dest="log_retention",
+    )
     return vars(parser.parse_args())
 
 
@@ -964,6 +971,39 @@ def update_lambda_functions(stack, bucket) -> None:
     print("lambda functions updated.\n\n")
 
 
+def set_log_settings(
+    base_name: str, days: int = 14, tagkey: str = "jobalertsagent"
+) -> None:
+    """
+    Sets the log retention for the specified base name.
+
+    Args:
+        base_name (str): The base name of the stack.
+        log_retention (int): The number of days to retain log events. Default is 14 days.
+        tagkey (str): The tag key for tagging logs.
+
+    Returns:
+        None
+    """
+    print(f"setting log retention for {base_name} logs to {days} days")
+    logs = boto3.client("logs")
+    log_groups = logs.describe_log_groups(logGroupNamePattern=base_name)["logGroups"]
+    tag = {tagkey: tagkey}
+    for log_group in log_groups:
+        current = log_group.get("retentionInDays")
+        arn = log_group.get("logGroupArn") or log_group.get("arn")[:-2]
+        tags = logs.list_tags_for_resource(resourceArn=arn).get("tags", {})
+        if current and current == days and tags and tags.get(tagkey):
+            continue
+        if not tags or not tags.get(tagkey):
+            logs.tag_resource(resourceArn=arn, tags=tag)
+            if current and current == days:
+                continue
+        logs.put_retention_policy(
+            logGroupName=log_group["logGroupName"], retentionInDays=days
+        )
+
+
 def main() -> None:
     """
     Executes the main deployment process.
@@ -1025,6 +1065,11 @@ def main() -> None:
             == "true"
         ):
             update_stacks(params=root_params, s3key=root_key)
+            set_log_settings(
+                base_name=base_name,
+                days=cli_args["log_retention"],
+                tagkey=cli_args["tagkey"],
+            )
             if update_lambdas:
                 update_lambda_functions(stack=stack, bucket=bucket)
         else:
