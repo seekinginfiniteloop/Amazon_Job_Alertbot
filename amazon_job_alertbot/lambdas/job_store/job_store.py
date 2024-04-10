@@ -1,17 +1,23 @@
 import contextlib
 import difflib
+import json
 import logging
+import random
+import re
+import time
 import traceback
+
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Any, Iterator, Literal
 
 import boto3
+
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-logger = logging.getLogger(name="amzn_job_store")
-logger.setLevel(level="INFO")
+logger = logging.getLogger()
 
 
 today = datetime.now(timezone.utc)
@@ -37,9 +43,7 @@ def log_client_error(error: Exception, func: str) -> None:
     logger.error(f"Complete error response: {error.response}")
 
 
-def get_data(
-    event: dict[str, Any],
-) -> dict[str, Any]:
+def get_data(event: dict[str, Any]) -> dict[str, Any]:
     """
     Retrieves a dictionary for key
     from event.
@@ -154,6 +158,9 @@ def substantial_keys(key: str) -> bool:
         "primary_search_label",
         "source_system",
         "url_next_step",
+        "sent",
+        "sent_on",
+        "message_id",
     }:
         return False
 
@@ -167,7 +174,7 @@ def get_diff(new_job: dict[str, Any], table, context: int = 3) -> str:
         store_job(job=new_job, table=table)
         return None
     except ClientError as e:
-        logger.exception(e)
+        log_client_error(e, "get_diff")
         return None
 
     changes = {}
@@ -183,7 +190,7 @@ def get_diff(new_job: dict[str, Any], table, context: int = 3) -> str:
 
 
 def get_status(
-    job_id: int, table, last_updated: datetime, last_scrape: datetime
+    job_id: int, table: Any, last_updated: datetime | str
 ) -> Literal["new", "updated"] | None:
     """
     Get the status of the job with the specified ID.
@@ -206,20 +213,44 @@ def get_status(
         logger.debug("table is empty, returning new")
         return "new"
     try:
-        response = table.get_item(Key={"id_icims": job_id})
-        logger.debug(f"checking if job {job_id} is in database: {response}")
-        if not response or not response.get("Items", []):
-            return "new"
-        if last_scrape := response["Items"][0].get("last_scrape"):
-            if datetime.fromisoformat(last_scrape) < last_updated:
-                logger.debug(f"job {job_id} is updated, returning updated")
-                return "updated"
-
+        return assess_status(table, job_id, last_updated)
     except ClientError as e:
         if e.response["Error"]["Code"] == "ValidationException":
             return "new"
         log_client_error(error=e, func="get_status")
     return None
+
+
+def assess_status(table: Any, job_id: str, last_updated: datetime):
+    """
+    Assesses the status of a job based on its presence in the database and last update times.
+
+    Args:
+        table: The table object used for database operations.
+        job_id: The ID of the job to assess.
+        last_updated: The timestamp of the last update.
+
+    Returns:
+        str: The status of the job, which can be "new", "updated", or None.
+    """
+    response = table.get_item(Key={"id_icims": job_id})
+    logger.debug(f"checking if job {job_id} is in database: {response}")
+    if not response or not response.get("Items", []):
+        return "new"
+    status = None
+    if last_scrape := response["Items"][0].get("last_scrape"):
+        last_updated = (
+            last_updated
+            if isinstance(last_updated, datetime)
+            else datetime.fromisoformat(last_updated)
+        )
+        if datetime.fromisoformat(last_scrape) < last_updated:
+            logger.debug(f"job {job_id} is updated, returning updated")
+            status = "updated"
+        if sent := response["Items"][0].get("sent_on"):
+            if datetime.fromisoformat(sent) <= last_updated:
+                status = "updated"
+    return status
 
 
 def stringify_dates(job: dict[str, Any]) -> dict[str, Any]:
@@ -232,15 +263,10 @@ def stringify_dates(job: dict[str, Any]) -> dict[str, Any]:
     Returns:
         The job dictionary with all date fields converted to strings.
     """
-    for key, value in job.items():
-        if key in ["last_updated", "posted_date", "last_scrape"]:
-            job[key] = value.isoformat()
-        if isinstance(value, datetime):
-            job[key] = value.isoformat()
-    return job
+    return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in job.items()}
 
 
-def store_job(job: dict[str, Any], table) -> None:
+def store_job(job: dict[str, Any], table: Any) -> None:
     """
     Store the job in the specified table.
 
@@ -273,99 +299,161 @@ def store_job(job: dict[str, Any], table) -> None:
         log_client_error(error=e, func="store_job")
 
 
-def set_dates(job: dict[str, Any]) -> datetime:
+def execute_threads(jobs: list[dict[str, Any]], table: Any) -> list[dict[str, Any]]:
     """
-    Sets the dates for a job.
+    Execute multiple job storage tasks concurrently using a thread pool.
 
     Args:
-        job (dict): The job dictionary containing information about the job.
+        jobs: List of jobs to update and store.
+        table: The table to store the jobs in.
 
     Returns:
-        Tuple[datetime.date, datetime.date, datetime.date]: A tuple containing the posted date, last updated date (or posted date if unavailable), and the current date.
+        list: List of results from the job storage tasks.
     """
-
-    posted_date: datetime = parse_date(job["posted_date"])
-    if updated_time_str := job.get("updated_time"):
-        updated_time = (
-            int(updated_time_str.replace(" days", "").strip())
-            if (updated_time_str.endswith("days") or updated_time_str.endswith("day"))
-            else 0
+    logger.debug("Initiating threadpool for job storage tasks")
+    with ThreadPoolExecutor(thread_name_prefix="job_storage_worker") as executor:
+        futures: Iterator[dict[str, Any]] = executor.map(
+            update_and_store_job, iter(jobs), [table] * len(jobs)
         )
-        last_updated: datetime = today - timedelta(days=updated_time)
-        return posted_date, last_updated, today
-    return posted_date, posted_date, today
+    return list(list(futures))
 
 
-def parse_date(date_str: str) -> datetime:
+def parse_qualifications(qualifications: str) -> list[str]:
     """
-    Parses a date string into a datetime object.
+    Parses and extracts qualifications from a given string of qualifications.
 
     Args:
-        date_str (str): The date string to be parsed.
+        qualifications (str): A string containing qualifications to be parsed.
 
     Returns:
-        datetime.date: The parsed datetime object.
-
-    Raises:
-        ValueError: If the date string is not in the expected format.
+        list: A list of cleaned and extracted qualifications from the input string.
     """
 
-    for fmt in ("%Y-%m-%d", "%B %d, %Y"):
-        with contextlib.suppress(ValueError):
-            return datetime.strptime(date_str, fmt).date()
-    raise ValueError(f"Date string {date_str} is not in an expected format")
+    if not qualifications:
+        return []
+
+    cleaned_str: str = re.sub(
+        pattern=r"[\s\t]*?[-•][\s\t]*?", repl="", string=qualifications
+    )
+    qualifications_list: list[str | Any] = re.split(
+        pattern=r"<br/>[\s\t]?<br/>|<br/>", string=cleaned_str
+    )
+
+    return [
+        item.strip()
+        for item in qualifications_list
+        if (item.strip() and not item.strip().startswith("Amazon is committed to"))
+    ]
+    # we remove the equal opportunity and reasonable accommodation statement.
+    # While it's important, it's not a qualification for the job.
+    # It seems an odd place to shove a boilerplate statement into...
+    # We'll add the accommodations link to the bottom of our email instead
 
 
-def update_and_store_jobs(
-    data: dict[str, str | int | dict | list], table
-) -> list[dict[str, str | int | dict | list | None]] | None:
+def normalize_job(job: dict[str, Any]) -> dict[str, Any]:
     """
-    Extract and store the jobs from the provided data into the specified table.
-    The function retrieves the last scrape time from the table and iterates over each
-    job in the data.If the last scrape time exists, it checks the status of the job
-    using the get_status function.If the status is "new" or "updated", the job is
-    stored in the table using the store_job function. If the status is "updated", the
-    job is also stored with the differences using the store_job_with_diff function.
-    If the last scrape time does not exist, all jobs are stored in the table.
-    The function returns a list of new or updated jobs.
+    Normalize job data by adjusting locations, URLs, and labels.
 
     Args:
-        data: The data containing the jobs to extract and store.
-        table: The table object to store the jobs in.
+        job: Dictionary containing job details to be normalized.
 
     Returns:
-        A list of new or updated jobs.
-
+        dict[str, Any]: Normalized job data with adjusted locations, URLs, and labels.
     """
-    new_or_updated_jobs: list[Any] = []
-    for job in data:
-        job["posted_date"], job["last_updated"], job["last_scrape"] = set_dates(job=job)
-        job["job_path"] = f"https://amazon.jobs{job['job_path']}"
-        job["date_off_market"] = "NA"
-        if status := get_status(
-            job_id=job["id_icims"],
-            table=table,
-            last_updated=job["last_updated"],
-            last_scrape=job["last_scrape"],
-        ):
-            if status == "new":
-                job["type"] = "scrape_record"
+    if locations := [json.loads(item) for item in job.get("locations", []) if item]:
+        job["adjusted_locations"] = "; ".join(
+            sorted(
+                list(
+                    {
+                        f"{item.get('normalizedCityName')}, {item.get('region')} [{item.get('type').lower()}])"
+                        for item in locations
+                    }
+                )
+            )
+        )
+        job["email_locations"] = [
+            {
+                "city": item.get("normalizedCityName"),
+                "region": item.get("region"),
+                "coordinates": item.get("coordinates"),
+                "type": item.get("type").lower(),
+            }
+            for item in sorted(
+                locations, key=lambda x: (x.get("normalizedCityName"), x.get("region"))
+            )
+        ]
+        if buildings := {
+            building
+            for item in locations
+            for building in item.get("buildingCodeList", [])
+            if building
+        }:
+            job["buildings"] = ", ".join(sorted(list(buildings)))
+    if search_labels := [
+        item for item in job.get("optional_search_labels", []) if item
+    ]:
+        job["optional_search_labels"] = ", ".join(search_labels)
+    job.pop("team", None)
+    job.pop("department_cost_center", None)
+    job["last_scrape"] = today
+    job["job_path"] = f"https://amazon.jobs{job['job_path']}"
+    job["date_off_market"] = "NA"
+    job["basic_qualifications"] = parse_qualifications(job.get("basic_qualifications"))
+    job["preferred_qualifications"] = parse_qualifications(
+        job.get("preferred_qualifications")
+    )
+    return job
+
+
+def update_and_store_job(
+    job: dict[str, Any], table: Any
+) -> dict[str, Any] | Any | None:
+    """
+    Update and store a job record in the specified table.
+
+    Args:
+        job: The job record to update and store.
+        table: The table to store the job record in.
+
+    Returns:
+        dict: The updated job record if successfully stored, None otherwise.
+    """
+
+    job = normalize_job(job=job)
+    if status := get_status(
+        job_id=job["id_icims"],
+        table=table,
+        last_updated=job["last_updated"],
+    ):
+        if status == "new":
+            job["type"] = "scrape_record"
+            store_job(job=job, table=table)
+            return job
+        elif status == "updated":
+            if changes := get_diff(new_job=job, table=table):
+                job["changes"] = changes
                 store_job(job=job, table=table)
-                new_or_updated_jobs.append(job)
-            elif status == "updated":
-                if changes := get_diff(new_job=job, table=table):
-                    job["changes"] = changes
-                    store_job(job=job, table=table)
-                    try:
-                        new_or_updated_jobs.append(
-                            table.get_item(Key={"id_icims": job["id_icims"]})
-                        )
-                    except ClientError as e:
-                        log_client_error(error=e, func="update_and_store_jobs")
-    return new_or_updated_jobs
+                try:
+                    return table.get_item(Key={"id_icims": job["id_icims"]})
+                except ClientError as e:
+                    log_client_error(e, "update_and_store_job")
+                    if e.response["Error"]["Code"] not in [
+                        "RequestLimitExceeded",
+                        "Throttling",
+                    ] and e.response.get("ResponseMetadata", {}).get(
+                        "HTTPStatusCode"
+                    ) not in [
+                        429,
+                        503,
+                    ]:
+                        raise e
+                    time.sleep(random.uniform(1, 5))
+                    return table.get_item(Key={"id_icims": job["id_icims"]})
+            else:
+                logger.debug(f"no changes found for job {job['id_icims']}")
 
 
-def find_newest_scrape(table) -> datetime:
+def find_newest_scrape(table: Any) -> datetime:
     """
     Finds the newest last_scrape date that isn't today. We use this for finding how far
     back to go with subsequent scrapes. If the databse is empty, we set the value to 1.5
@@ -405,8 +493,8 @@ def find_newest_scrape(table) -> datetime:
 
 
 def keep_keys(
-    new_jobs: list[dict[str, str | int | dict | list | None]],
-) -> list[dict[str, str | int | dict | list | None]]:
+    new_jobs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Filters the given list of new jobs and keeps only the specified keys in each job dictionary.
 
@@ -419,7 +507,7 @@ def keep_keys(
     """
     keepers = []
     for job in new_jobs:
-        new = {
+        new: dict[str, Any] = {
             k: job[k]
             for k in job.keys()
             if k
@@ -427,6 +515,8 @@ def keep_keys(
                 "id_icims",
                 "title",
                 "company",
+                "adjusted_locations",
+                "email_locations",
                 "location",
                 "last_updated",
                 "posted_date",
@@ -457,8 +547,12 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
     logger.info(
         f"Job Store execution started. New jobs found: {len(jobs)}, remaining_hits: {remaining_hits}, newest_scrape: {newest_scrape}"
     )
-    newest_scrape: datetime = newest_scrape if isinstance(newest_scrape, datetime) else datetime.fromisoformat(newest_scrape)
-    if new_jobs := update_and_store_jobs(data=jobs, table=table):
+    newest_scrape: datetime = (
+        newest_scrape
+        if isinstance(newest_scrape, datetime)
+        else datetime.fromisoformat(newest_scrape)
+    )
+    if new_jobs := execute_threads(jobs, table):
         new_jobs = keep_keys(new_jobs=new_jobs)
         if (
             len(new_jobs) == len(jobs)
@@ -481,7 +575,7 @@ def store_to_db(event: dict[str, Any]) -> dict[str, dict[str, Any] | Any]:
             "status": {"statusCode": 200, "state": "InvokeJobStore"},
             "data": {
                 "jobs_to_send": True,
-                "new_jobs": new_jobs,
+                "new_jobs": [stringify_dates(job) for job in new_jobs],
                 "more_jobs": more_jobs,
                 "newest_scrape": newest_scrape.isoformat(),
                 "remaining_hits": remaining_hits,
@@ -535,16 +629,10 @@ def job_store_handler(event: dict[str, Any], context: dict[str, Any]) -> dict[st
         return store_to_db(event=event)
 
     except Exception as e:
-        logger.error(f"Error occurred in Lambda var_replacer: {str(e)}")
-
-        return {
-            "status": {
-                "statusCode": 500,
-                "state": "InvokeJobStore",
-                "errorFunc": context.function_name,
-                "errorType": type(e).__name__,
-                "errorMessage": str(e),
-                "stackTrace": traceback.format_exc(),
-            },
-            "data": get_data(event=event),
-        }
+        logger.error(f"Error in {context.function_name}: {e}")
+        logger.error("State: InvokeJobStore")
+        logger.error(traceback.format_exc())
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Entry event for error: {event}")
+        raise e

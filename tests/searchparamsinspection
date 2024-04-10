@@ -1,0 +1,36 @@
+
+Job Type:
+kewword: job_type
+Values:
+Full-Time
+Part-Time
+Seasonal
+
+Job Category:
+keyword: category
+Values:
+  software-development, operations-it-support-engineering, fulfillment-operations-management, project-program-product-management-non-tech, sales-advertising-account-management, project-program-product-management-technical, finance-accounting, medical-health-safety, supply-chain-transportation-management, facilities-maintenance-real-estate, systems-quality-security-engineering, business-intelligence, marketing-pr, buying-planning-instock-management, solutions-architect, human-resources, business-merchant-development, machine-learning-science, hardware-development, investigation-loss-prevention, customer-service, design, administrative-support, editorial-writing-content-management, legal, data-science, research-science, economics, leadership-development-training, public-relations, database-administration, fulfillment-warehouse-associate, audio-video-photography-production, public-policy
+
+  Category Type:
+  keyword: category_type
+  values:
+    Work from Home
+    studentprograms
+    Customer Service
+    Fulfillment-center
+    Corporate
+
+Role Type:
+  Individual Contributor
+  Manager
+
+  keyword: is_manager
+  value: 0 or 1
+
+Country
+keyword: country
+valid values are 3 letter country code
+
+State/Province
+keyword: state
+valid values are the full name of the state in title case and including spaces (e.g. California, New York, Karnataka)
