@@ -1,12 +1,12 @@
 import logging
 import re
 import traceback
+
 from datetime import datetime, timezone
 from logging import Logger
 from typing import Any
 
 logger: Logger = logging.getLogger(name="var_replacer")
-logger.setLevel(level="INFO")
 
 
 def get_data(
@@ -122,16 +122,10 @@ def var_replacer_handler(
         return replace_vars(event=event, context=context)
 
     except Exception as e:
-        logger.error(f"Error occurred in Lambda var_replacer: {e}")
-
-        return {
-            "status": {
-                "statusCode": 500,
-                "state": "ReplaceParams",
-                "errorType": type(e).__name__,
-                "errorFunc": context.function_name,
-                "errorMessage": str(e),
-                "stackTrace": traceback.format_exc(),
-            },
-            "data": get_data(event=event),
-        }
+        logger.error(f"Error in {context.function_name}: {e}")
+        logger.error("State: ReplaceParams")
+        logger.error(traceback.format_exc())
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Entry event for error: {event}")
+        raise e

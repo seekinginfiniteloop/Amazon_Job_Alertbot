@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: |
-  Deploys all JobAgent resources in three batches using pseudo-child stacks, first setting base roles and infrastructure to enable script to upload templates and functions, and then finalizing implementation with all resources needed for the state machine, finally enables application insights once the stack is fully constructed.
+  Deploys all JobAgent resources in two batches using pseudo-child stacks, first setting base roles and infrastructure to enable script to upload templates and functions, and then finalizing implementation with all resources needed for the state machine.
 Parameters:
   YourEmail:
     Type: String
@@ -35,7 +35,8 @@ Parameters:
     ConstraintDescription: Must be a valid lower case two-letter ISO 639 set 1 language code
     MaxLength: 2
     MinLength: 2
-    AllowedPattern: "^[a-z]+$"
+    AllowedValues:
+      [ar, cn, de, en, es, fr, id, it, jp, ko, pt, ru, th, tr, tw, vi]
   IETFCode:
     Type: String
     Description: Valid IETF language tag, see "https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry"
@@ -73,10 +74,126 @@ Parameters:
       Whether the child stack should be enabled, set to true to enable
       childstack
     Default: "false"
-  StackName:
+  SESHTMLTemplate:
     Type: String
-    Description: Name of the stack used for ApplicationInsights under CreateChildStack condition.
-    Default: "none"
+    Description: HTML template for SES
+    # We use old-school HTML tables because some email clients don't render CSS
+    # properly.. in 2024. Formatting compressed to fit 4096 character limit.
+    Default: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+      <title>Amazon Job Agent Report</title>
+      </head>
+      <body style="font-family:'Amazon Ember','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:1rem;font-weight:400;line-height:1.5;text-align:left;background-color:#fff;color:#131921;margin:0;padding:0">
+      <table width=100% border=0 cellspacing=0 cellpadding=0>
+      <tr>
+      <td>
+      <table width=600 align=center border=0 cellspacing=0 cellpadding=0 style=background-color:#fff;margin:10px;padding:20px>
+      <tr>
+      <td style=background-color:#232f3e;color:white;text-align:center;padding:10px>
+      <h1 style=font-weight:500;font-size:1.5rem>Your Amazon Jobs Update for {{today}}</h1>
+      </td>
+      </tr>
+      <tr>
+      <td>
+      <p style=font-size:.75rem;color:#232f3e;text-align:right>new jobs: {{job_count}}</p>
+      </td>
+      </tr>
+      {{#each jobs}}
+      <tr>
+      <td style=background-color:#fff;padding:5px></td>
+      </tr>
+      <tr>
+      <td style=background-color:#f3f3f3;padding:15px;margin-bottom:20px;border-radius:5px>
+      <h2 style=font-weight:350;font-size:1.25rem;text-align:left><a href={{job_path}} style=color:#0073a8;text-decoration:none>{{title}}</a></h2>
+      <p class=location style=color:#565959;font-size:.8rem;text-align:center>
+      {{#each email_locations}}
+      <a href="https://www.google.com/maps/search/?api=1&query={{coordinates}}" style=color:#0073a8;text-decoration:none>{{city}}</a>, {{region}} [{{type}}]
+      {{#unless @last}}<span class=separator style="color:#ccc;margin:0 5px">|</span>{{/unless}}
+      {{/each}}
+      </p>
+      <p class=description style=font-size:.8rem>{{description_short}}</p>
+      <h3 style=font-size:.85rem>basic qualifications:</h3>
+      <ul class=qualifications style=list-style-type:disc;margin-left:20px;font-size:.8rem>
+      {{#each basic_qualifications}}
+      <li>{{qual}}</li>
+      {{/each}}
+      </ul>
+      <p class=nextstep style=font-size:.85rem><a href={{url_next_step}} style=color:#0073a8;text-decoration:none>Apply Now</a></p>
+      <p class=subtext style=font-size:.75rem;color:#565959>Last updated: {{last_updated}} | Date
+      posted: {{posted_date}}</p>
+      </td>
+      </tr>
+      <tr>
+      <td style=background-color:#fff;padding:10px></td>
+      </tr>
+      {{/each}}
+      <tr>
+      <td style="text-align:center;padding:20px;color:#fff;background-color:#232f3e;border-top:1px solid #ccc">
+      <p><b>Rock your loop!</b> You got this.<br>
+      <text style=font-size:.75rem>-- Amazon Job Alertbot</text>
+      </p>
+      <p class=footnote style=font-size:.65rem;text-align:center;color:#999>To request an
+      accommodation for applying or interviewing, go to:<br> <a href=https://www.amazon.jobs/en/disability/us style=color:#f90;text-decoration:none>https://www.amazon.jobs/en/disability/us</a>.
+      <br><br>(If you are applying outside the U.S., you can also find your instructions there).</p>
+      </td>
+      </tr>
+      <tr>
+      <td style="text-align:center;padding:15px;color:#666;border-top:1px solid #666">
+      <p class=truefootnote style=background-color:#fff;color:#666;font-size:.75rem;text-align:center><a href=https://github.com/psuedomagi/Amazon_Job_Alertbot style=color:#0073a8;text-decoration:none><b>Amazon Job Alertbot</a> is not affiliated
+      with Amazon.</b> We're just solving a problem.</p>
+      <p class=truefootnote style=background-color:#fff;color:#666;font-size:.75rem;text-align:center><a href=https://github.com/psuedomagi/Amazon_Job_Alertbot/blob/main/LICENSE.md style=color:#0073a8;text-decoration:none>&copy 2024 Adam Poulemanos</a></p>
+      </td>
+      </tr>
+      </table>
+      </td>
+      </tr>
+      </table>
+      </body>
+      </html>
+  SESTextTemplate:
+    Type: String
+    Description: Text template for SES
+    Default: |
+      Amazon Job Agent Report\n
+      \n
+      Your Amazon Jobs Update for {{today}}\n
+      New jobs: {{job_count}}\n
+      \n
+      {{#each jobs}}\n
+      ----------------------------------\n
+      {{title}}\n
+      Location(s):\n
+      {{adjusted_locations}}
+      \n
+      Description:\n
+      {{description_short}}\n
+      \n
+      Basic Qualifications:\n
+      {{#each basic_qualifications}}\n
+      - {{qual}}\n
+      {{/each}}\n
+      \n
+      Apply Now: {{url_next_step}}\n
+      Last updated: {{last_updated}} | Date posted: {{posted_date}}\n
+      ----------------------------------\n
+      {{/each}}\n
+      \n
+      Rock your loop! You got this.\n
+      -- Amazon Job Alertbot\n
+      \n
+      To request an accommodation for applying or interviewing, go to:\n
+      https://www.amazon.jobs/en/disability/us\n
+      (If you are applying outside the U.S., you can also find your instructions there).\n
+      \n
+      Amazon Job Alertbot is not affiliated with Amazon. We're just solving a problem.\n
+      Github: https://github.com/psuedomagi/Amazon_Job_Alertbot \n
+      © 2024 Adam Poulemanos, license: https://github.com/psuedomagi/Amazon_Job_Alertbot/LICENSE.MD \n
+  SESSubjectTemplate:
+    Type: String
+    Description: Subject template for SES
+    Default: Your Amazon Jobs Update for {{today}} [Jobs Alertbot]
 Conditions:
   CreateChildStack: !Equals
     - !Ref "ChildEnabled"
@@ -437,13 +554,23 @@ Resources:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
               - Effect: Allow
-                Sid: AllowSDBDomainManagement
+                Sid: AllowSESForCloudFormRole
                 Action:
-                  - sdb:CreateDomain
-                  - sdb:DeleteDomain
-                  - sdb:ListDomains
-                  - sdb:BatchDeleteAttributes
+                  - ses:List*
+                  - ses:Get*
+                  - ses:TagResource
+                  - ses:UntagResource
+                  - ses:*ConfigurationSet*
+                  - ses:*Contact
+                  - ses:*EmailIdentity
+                  - ses:*EmailTemplate
+                  - ses:PutAccountDetails
+                  - ses:PutEmailIdentityMailFromAttributes
+                  - ses:*EmailIdentityPolicy
                 Resource: "*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
   JobAgentBucket:
     Type: AWS::S3::Bucket
     UpdateReplacePolicy: Delete
@@ -662,8 +789,6 @@ Resources:
           AttributeType: S
         - AttributeName: posted_date
           AttributeType: S
-        - AttributeName: date_off_market
-          AttributeType: S
         - AttributeName: type
           AttributeType: S
       BillingMode: PAY_PER_REQUEST
@@ -686,35 +811,39 @@ Resources:
               - posted_date
               - date_off_market
             ProjectionType: INCLUDE
-        - IndexName: date_off_market-index
+        - IndexName: last_updated-index
           ContributorInsightsSpecification:
             Enabled: false
           KeySchema:
             - AttributeName: type
               KeyType: HASH
-            - AttributeName: date_off_market
+            - AttributeName: last_updated
+              KeyType: RANGE
+          Projection:
+            NonKeyAttributes:
+              - id_icims
+              - posted_date
+              - last_scrape
+              - date_off_market
+            ProjectionType: INCLUDE
+        - IndexName: posted_date-index
+          ContributorInsightsSpecification:
+            Enabled: false
+          KeySchema:
+            - AttributeName: type
+              KeyType: HASH
+            - AttributeName: posted_date
               KeyType: RANGE
           Projection:
             NonKeyAttributes:
               - id_icims
               - last_updated
-              - posted_date
               - last_scrape
+              - date_off_market
             ProjectionType: INCLUDE
       KeySchema:
         - AttributeName: id_icims
           KeyType: HASH
-        - AttributeName: last_updated
-          KeyType: RANGE
-      LocalSecondaryIndexes:
-        - IndexName: posted_date-index
-          KeySchema:
-            - AttributeName: id_icims
-              KeyType: HASH
-            - AttributeName: posted_date
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
       TableClass: STANDARD_INFREQUENT_ACCESS
       SSESpecification:
         SSEEnabled: false
@@ -862,7 +991,6 @@ Resources:
     Type: AWS::SNS::Subscription
     Condition: CreateChildStack
     Properties:
-      Endpoint: !Ref YourEmail
       Protocol: email
       TopicArn: !Ref "JobSubscriberTopic"
       RedrivePolicy:
@@ -913,6 +1041,31 @@ Resources:
               - sns:RemovePermission
             Resource:
               - !Ref "JobSubscriberTopic"
+  JobAgentSESConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Condition: CreateChildStack
+    Properties:
+      Name: !Sub "${BaseName}-ses-config"
+      DeliveryOptions:
+        TlsPolicy: REQUIRE
+      SendingOptions:
+        SendingEnabled: true
+  JobAgentSESTemplate:
+    Type: AWS::SES::Template
+    Condition: CreateChildStack
+    Properties:
+      Template:
+        TemplateName: !Sub "${BaseName}-ses-template"
+        HtmlPart: !Ref SESHTMLTemplate
+        SubjectPart: !Ref SESSubjectTemplate
+        TextPart: !Ref SESTextTemplate
+  JobAgentSESEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: CreateChildStack
+    Properties:
+      EmailIdentity: !Ref YourEmail
+      ConfigurationSetAttributes:
+        ConfigurationSetName: !Ref JobAgentSESConfigurationSet
   JobAgentBaseLogAndTracePolicy:
     Type: AWS::IAM::ManagedPolicy
     Condition: CreateChildStack
@@ -1142,6 +1295,22 @@ Resources:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
               - Effect: Allow
+                Sid: AllowLambdaSenderAgentSESAccess
+                Action:
+                  - ses:SendEmail
+                  - ses:ListEmailTemplates
+                  - ses:GetEmailTemplate
+                  - ses:UpdateEmailTemplate
+                  - ses:TestRenderEmailTemplate
+                  - ses:GetEmailIdentity
+                  - ses:GetEmailIdentityPolicies
+                  - ses:GetConfigurationSet
+                  - ses:ListConfigurationSets
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:template/${JobAgentSESTemplate}"
+                  - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${JobAgentSESEmailIdentity}"
+                  - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/${JobAgentSESConfigurationSet}"
+              - Effect: Allow
                 Sid: AllowLambdaSenderS3ObjectAccessForSNS
                 Action:
                   - s3:GetObject
@@ -1173,7 +1342,66 @@ Resources:
         ApplicationLogLevel: TRACE
         LogFormat: JSON
         SystemLogLevel: DEBUG
-      Timeout: 60
+      Timeout: 600
+      TracingConfig:
+        Mode: Active
+      Tags:
+        - Key: !Ref "TagKey"
+          Value: !Ref TagKey
+        - Key: !Sub "${BaseName}rsc_grp"
+          Value: app-resource
+  JobAgentBatchWriterRole:
+    Type: AWS::IAM::Role
+    Condition: CreateChildStack
+    Properties:
+      RoleName: !Sub "${AWS::Region}-${BaseName}-batch-writer-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Sub "lambda.${AWS::URLSuffix}"
+            Action: sts:AssumeRole
+      PermissionsBoundary: !Ref LambdaPermissionBoundaryPolicy
+      ManagedPolicyArns:
+        - !Ref JobAgentBaseLogAndTracePolicy
+      Policies:
+        - PolicyName: !Sub "${BaseNameTitleCase}BatchWriterPolicy"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Sid: AllowBatchWriter
+                Action:
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:DescribeTable
+                  - dynamodb:ListTables
+                  - dynamodb:BatchGetItem
+                  - dynamodb:PutItem
+                Resource:
+                  - !GetAtt "JobAgentStoreTable.Arn"
+                  - !Sub "${JobAgentStoreTable.Arn}/index/*"
+                  - !Sub "${JobAgentStoreTable.Arn}/*"
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:ResourceTag/jobalertsagent": !Ref TagKey
+  JobAgentBatchWriterFunction:
+    Type: AWS::Lambda::Function
+    Condition: CreateChildStack
+    Properties:
+      FunctionName: !Sub "${BaseName}-job-batch-writer"
+      Handler: batch_writer.batch_writer_handler
+      Role: !GetAtt "JobAgentBatchWriterRole.Arn"
+      Runtime: python3.12
+      Code:
+        S3Bucket: !Ref "JobAgentBucket"
+        S3Key: lambdas/batch_writer.zip
+      LoggingConfig:
+        ApplicationLogLevel: TRACE
+        LogFormat: JSON
+        SystemLogLevel: DEBUG
+      Timeout: 180
       TracingConfig:
         Mode: Active
       Tags:
@@ -1258,6 +1486,7 @@ Resources:
                   - !GetAtt "JobAgentStoreFunction.Arn"
                   - !GetAtt "JobAgentSenderFunction.Arn"
                   - !GetAtt "VarReplacerFunction.Arn"
+                  - !GetAtt "JobAgentBatchWriterFunction.Arn"
                 Condition:
                   StringEquals:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
@@ -1295,6 +1524,15 @@ Resources:
                 Condition:
                   StringEqualsIfExists:
                     "aws:ResourceTag/jobalertsagent": !Ref TagKey
+              - Effect: Allow
+                Sid: AllowDynamoDBItemUpdates
+                Action:
+                  - dynamodb:UpdateItem
+                  - dynamodb:PutItem
+                Resource:
+                  - !GetAtt "JobAgentStoreTable.Arn"
+                  - !Sub "${JobAgentStoreTable.Arn}/index/*"
+                  - !Sub "${JobAgentStoreTable.Arn}/*"
   JobAgentStateMachineLogGroup:
     Type: AWS::Logs::LogGroup
     UpdateReplacePolicy: Delete
@@ -1331,6 +1569,7 @@ Resources:
         JobQueueUrl: !Ref "JobQueue"
         SNSJobSubscriberTopicArn: !Ref "JobSubscriberTopic"
         SNSJobSubscriberTopicName: !GetAtt "JobSubscriberTopic.TopicName"
+        JobAgentBatchWriterFunctionArn: !GetAtt "JobAgentBatchWriterFunction.Arn"
         Base: !Ref "BaseName"
       StateMachineType: STANDARD
       Tags:
@@ -1389,19 +1628,8 @@ Resources:
                     },
                     "ResultPath": "$.params",
                     "OutputPath": "$.params.desiredOutput",
-                    "Next": "CheckForErrorInVarRep"
+                    "Next": "InvokeJobScraper"
                 },
-                "CheckForErrorInVarRep": {
-                    "Type": "Choice",
-                    "Choices": [
-                        {
-                            "Variable": "$.status.statusCode",
-                            "NumericEquals": 500,
-                            "Next": "FailedExecution"
-                        }
-                    ],
-                    "Default": "InvokeJobScraper"
-                    },
                 "InvokeJobScraper": {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::lambda:invoke",
@@ -1446,15 +1674,23 @@ Resources:
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.status.statusCode",
-                            "NumericEquals": 500,
-                            "Next": "FailedExecution"
-                        },
-                        {
                             "Variable": "$.data.jobs_found",
                             "NumericGreaterThan": 0,
                             "Next": "PassToStore"
-                        }
+                        },
+                        {
+                        "And": [
+                            {
+                                "Variable": "$.data.jobs_found",
+                                "NumericEquals": 0
+                            },
+                            {
+                                "Variable": "$.data.jobs_to_send",
+                                "BooleanEquals": true
+                            }
+                            ],
+                            "Next": "InvokeSender"
+                          }
                     ],
                     "Default": "EndState"
                 },
@@ -1519,11 +1755,6 @@ Resources:
                     "Type": "Choice",
                     "Choices": [
                         {
-                          "Variable": "$.status.statusCode",
-                          "NumericEquals": 500,
-                          "Next": "FailedExecution"
-                        },
-                        {
                             "Variable": "$.data.new_jobs",
                             "IsPresent": true,
                             "Next": "SplitBranch"
@@ -1582,11 +1813,6 @@ Resources:
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.status.statusCode",
-                            "NumericEquals": 500,
-                            "Next": "FailedExecution"
-                        },
-                        {
                             "And": [
                                 {
                                     "Variable": "$.data.remaining_hits",
@@ -1605,44 +1831,37 @@ Resources:
                         },
                         {
                             "And": [
-                            {
-                            "Variable": "$.data.more_jobs",
-                            "BooleanEquals": false
-
-                            },
-                            {
-                            "Variable": "$.data.jobs_to_send",
-                            "BooleanEquals": true
-                            }
+                                {
+                                    "Variable": "$.data.more_jobs",
+                                    "BooleanEquals": false
+                                },
+                                {
+                                    "Variable": "$.data.jobs_to_send",
+                                    "BooleanEquals": true
+                                }
                             ],
                             "Next": "InvokeSender"
                         }
                     ],
                     "Default": "EndState"
                 },
-                "FilterBackToJobScraper":{
+                "FilterBackToJobScraper": {
                     "Type": "Pass",
-                    "InputPath": "$",
                     "Parameters": {
-                      "data": {
-                        "jobs_to_send.$": "$.data.jobs_to_send",
-                        "newest_scrape.$": "$.data.newest_scrape",
-                        "remaining_hits.$": "$.data.remaining_hits",
-                        "next_offset.$": "$.data.next_offset",
-                        "searchparams.$": "$.data.searchparams",
-                        "dbparams.$": "$.data.dbparams",
-                        "sendparams.$":"$.data.sendparams"
-                        },
-                      "status.$": "$.status"
-                    },
-                    "Result": {
-                      "mergedData": {
-                        "data.$": "$.data",
-                        "status.$": "$.status"
+                        "newPayload": {
+                            "data": {
+                                "jobs_to_send.$": "$.data.jobs_to_send",
+                                "newest_scrape.$": "$.data.newest_scrape",
+                                "remaining_hits.$": "$.data.remaining_hits",
+                                "next_offset.$": "$.data.next_offset",
+                                "searchparams.$": "$.data.searchparams",
+                                "dbparams.$": "$.data.dbparams",
+                                "sendparams.$": "$.data.sendparams"
+                            },
+                            "status.$": "$.status"
                         }
                     },
-                    "ResultPath": "$.mergedData",
-                    "OutputPath": "$.mergedData",
+                    "OutputPath": "$.newPayload",
                     "Next": "InvokeJobScraper"
                 },
                 "InvokeSender": {
@@ -1677,25 +1896,62 @@ Resources:
                         }
                     ],
                     "ResultSelector": {
-                      "results": {
-                        "status.$": "$.Payload.status",
-                        "data.$": "$.Payload.data"
+                        "results": {
+                            "status.$": "$.Payload.status",
+                            "data.$": "$.Payload.data"
                         }
                     },
                     "ResultPath": "$.params",
                     "OutputPath": "$.params.results",
-                    "Next": "CheckForFailure"
+                    "Next": "EvalSend"
                 },
-                "CheckForFailure": {
+                "EvalSend": {
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.status.statusCode",
-                            "NumericEquals": 500,
-                            "Next": "FailedExecution"
+                            "Variable": "$.data.UpdateRequests",
+                            "IsPresent": true,
+                            "Next": "InvokeBatchWriter"
                         }
                     ],
                     "Default": "EndState"
+                },
+                "InvokeBatchWriter": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                        "FunctionName": "${JobAgentBatchWriterFunctionArn}",
+                        "Payload": {
+                            "data": {
+                              "UpdateRequests.$": "$.data.UpdateRequests",
+                              "TableName": "${JobAgentStoreTableName}"
+                            }
+                        }
+                    },
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "Lambda.ClientExecutionTimeoutException",
+                                "Lambda.ServiceException",
+                                "Lambda.AWSLambdaException",
+                                "Lambda.SdkClientException"
+                            ],
+                            "IntervalSeconds": 30,
+                            "MaxAttempts": 6,
+                            "BackoffRate": 2
+                        }
+                    ],
+                    "TimeoutSeconds": 60,
+                    "Catch": [
+                        {
+                            "ErrorEquals": [
+                                "States.ALL"
+                            ],
+                            "ResultPath": "$.errorInfo",
+                            "Next": "FailedExecution"
+                        }
+                    ],
+                    "Next": "EndState"
                 },
                 "EndState": {
                     "Type": "Succeed"
@@ -1795,15 +2051,15 @@ Resources:
                   "sqs_queue_url": "${JobQueue}",
                   "topic_name": "${JobSubscriberTopic.TopicName}",
                   "topic_arn": "${JobSubscriberTopic}",
+                  "email_identity": "${JobAgentSESEmailIdentity}",
+                  "ses_template": "${JobAgentSESTemplate}",
+                  "configuration_set": "${JobAgentSESConfigurationSet}",
                   "s3_bucket": "${JobAgentBucket}",
                   "s3_key_prefix": "SNSExtendedMessages/",
                   "tag_key": "${TagKey}",
                   "subject": "Your Amazon Jobs For {{today}}",
                   "default_intro": "Your Amazon jobs update for {{today}}:\nnew jobs: {{job_count}}\n\n",
                   "default_entry": "{{title}}, {{city}}\ndescription: {{description_short}}\nurl: {job_path}\napply url: {{url_next_step}}\n\n",
-                  "email_intro": "<html><head></head><body><h1>Your Amazon Jobs Update for {{today}}</h1><br>new jobs: {{job_count}}<br>",
-                  "email_entry": "<p><h2><a href='{{job_path}}'>{{title}}, {{city}}</a></h2></p>{{description_short}}</p><br><p><a href='{{url_next_step}}'>apply</a></p><br>",
-                  "email_outro": "</body></html>",
                   "sms": "new_job: {{title}}, {{city}}\nurl: {{job_path}}\n"
                 }
               }
@@ -1859,5 +2115,10 @@ Outputs:
           !GetAtt JobAgentScraperFunction.Arn,
           !GetAtt JobAgentStoreFunction.Arn,
           !GetAtt JobAgentSenderFunction.Arn,
+          !GetAtt JobAgentBatchWriterFunction.Arn,
         ],
       ]
+  SESConfigSet:
+    Condition: CreateChildStack
+    Description: SES configuration set
+    Value: !Ref JobAgentSESConfigurationSet

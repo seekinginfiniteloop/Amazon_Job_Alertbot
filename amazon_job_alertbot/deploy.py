@@ -8,12 +8,14 @@ import re
 import secrets
 import time
 import zipfile
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import boto3
+
 from boto3.resources import factory
 from botocore import client
 from botocore.exceptions import ClientError, WaiterError
@@ -101,6 +103,13 @@ def parse_cli() -> dict[str, str]:
         help="number of days to retain logs. Defaults to 14 days.",
         default=14,
         dest="log_retention",
+    )
+    parser.add_argument(
+        "--send-email-verification",
+        action="store_true",
+        help="send an email verification to the provided email address to enable email receipt",
+        dest="send_email_verification",
+
     )
     return vars(parser.parse_args())
 
@@ -410,7 +419,7 @@ def get_url_suffix() -> str:
     """
     Returns the URL suffix for the current region.
 
-    Returns:
+    Returns:e
         str: The URL suffix.
     """
     region: str = session.region_name
@@ -700,7 +709,7 @@ def push_objects(bucket: str, suffix: str) -> None:
             py_file: Path = next(
                 file
                 for file in lambda_folder.iterdir()
-                if file.suffix == ".py" and file.stem == lambda_folder.name
+                if (file.suffix == ".py" and file.stem == lambda_folder.name)
             )
             zip_obj: Path = zip_script(script_path=py_file)
             destinations.append((f"{lambda_s3}{zip_file}", zip_obj, "application/zip"))
@@ -710,7 +719,7 @@ def push_objects(bucket: str, suffix: str) -> None:
 
 def zip_script(script_path: Path) -> io.BufferedReader:
     """
-    Zips a single file in a virtual byte_buffer zip file for uploading
+    Zips the script and requirements.txt file in a virtual byte_buffer zip file for uploading
 
     Args:
         script_path: The path to the script file to zip
@@ -722,6 +731,10 @@ def zip_script(script_path: Path) -> io.BufferedReader:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.write(script_path, arcname=script_path.name)
+        archive.write(
+            f"{script_path.parent}/requirements.txt",
+            arcname="requirements.txt",
+        )
         if archive.testzip():
             raise ValueError(
                 f"Error zipping file {script_path.name}: {archive.testzip()}"
@@ -730,7 +743,7 @@ def zip_script(script_path: Path) -> io.BufferedReader:
     return buffer
 
 
-def bucket_empty(bucket) -> bool:
+def bucket_empty(bucket: Any) -> bool:
     """
     Checks if the S3 bucket is empty.
 
@@ -742,7 +755,7 @@ def bucket_empty(bucket) -> bool:
     return not bucket.objects.all()
 
 
-def object_exists(s3object) -> bool:
+def object_exists(s3object: Any) -> bool:
     """
     Checks if the S3 object exists.
 
@@ -934,7 +947,7 @@ def cleanup() -> None:
             os.remove(path=template)
 
 
-def update_lambda_functions(stack, bucket) -> None:
+def update_lambda_functions(stack: Any, bucket: str) -> None:
     """
     Updates the lambda functions in the specified stack.
 
@@ -1002,7 +1015,6 @@ def set_log_settings(
         logs.put_retention_policy(
             logGroupName=log_group["logGroupName"], retentionInDays=days
         )
-
 
 def main() -> None:
     """

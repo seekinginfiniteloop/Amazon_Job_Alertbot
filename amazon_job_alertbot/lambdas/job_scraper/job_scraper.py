@@ -2,16 +2,17 @@ import logging
 import re
 import time
 import traceback
+
 from datetime import datetime, timedelta, timezone
 from logging import Logger
 from typing import Any
 from urllib.parse import urlencode
 
 import requests
+
 from requests import Response, Session
 
-logger: Logger = logging.getLogger(name="job_scraper")
-logger.setLevel(level="DEBUG")
+logger: Logger = logging.getLogger()
 
 
 def get_data(
@@ -52,8 +53,6 @@ def set_vars(event: dict[str, Any]) -> tuple[Any | None, Any]:
     logger.debug(f"params: {params}")
     remaining_hits = data.get("remaining_hits")
     newest_scrape = data.get("newest_scrape")
-    if newest_scrape:
-        newest_scrape = datetime.fromisoformat(newest_scrape)
     if next_offset := data.get("next_offset"):
         params["criteria"]["offset"] = next_offset
 
@@ -200,6 +199,9 @@ def fetch_jobs(
     facets, criteria, headers, base_url, session, init_headers = set_params(
         search_params=search_params
     )
+    if new_offset := criteria.pop("next_offset", None):
+        criteria["offset"] = new_offset if new_offset >= offset else criteria["offset"]
+
     logger.debug(f"Establishing session with {base_url}")
     try:
         session.get(url=base_url, headers=init_headers)
@@ -224,29 +226,79 @@ def fetch_jobs(
         session.close()
 
 
-def get_date_updated(job: dict[str, str | int | None]) -> datetime:
+def set_dates(
+    jobs: list[dict[str, Any]], limit_date: str | datetime | None = None
+) -> tuple[list[dict[str, str | int | datetime | None]], datetime]:
     """
-    Gets the date updated for the job if present, else sets it to the posted date.
+    Sets and adjusts dates for job postings based on the provided jobs data and a limit date.
 
     Args:
-        job (dict[str, str | int | None]): The job dictionary containing information
-        about the job.
+        jobs (list): A list of job postings with date information to be processed.
+        limit_date (datetime): A limit date to be used for date adjustments.
 
     Returns:
-        datetime.date: The update date of the job.
+        tuple: A tuple containing the updated job postings list and the adjusted limit date.
     """
-    posted_date = datetime.strptime(job["posted_date"], "%B %d, %Y")
-    if updated_time_str := job.get("updated_time"):
-        if match := re.match(pattern=r"^(\d{1,3})", string=updated_time_str):
-            updated_days = int(match[0])
-        else:
-            updated_days = 0
-        return datetime.now(timezone.utc) - timedelta(days=updated_days)
-    return posted_date
+
+    now_time = datetime.now(timezone.utc)
+    if limit_date:
+        limit_date = (
+            datetime.fromisoformat(limit_date)
+            if isinstance(limit_date, str)
+            else limit_date
+        )
+        limit_date = (
+            limit_date if limit_date.tzinfo else limit_date.replace(tzinfo=timezone.utc)
+        )
+    if not jobs:
+        return ([], limit_date) if limit_date else ([], None)
+    for job in jobs:
+        if posted := job.get("posted_date"):
+            job["posted_date"] = datetime.strptime(posted, "%B %d, %Y").replace(
+                tzinfo=timezone.utc
+            )
+        if updated := job.get("updated_time"):
+            if time_match := re.search(
+                r"(\d{1,3})\s(day|hour|min|month|week)", updated
+            ):
+                time_value, time_unit = int(time_match[1]), time_match[2]
+                time_delta_args = {
+                    "day": "days",
+                    "hour": "hours",
+                    "min": "minutes",
+                    "week": "weeks",
+                    "month": "days",
+                }
+                if time_unit == "month":
+                    time_value *= 30
+                last_updated = now_time - timedelta(
+                    **{time_delta_args[time_unit]: time_value}
+                )
+            job["last_updated"] = (
+                last_updated
+                if last_updated >= job["posted_date"]
+                else job["posted_date"]
+            )
+        if not updated:
+            job["last_updated"] = job["posted_date"]
+    return (jobs, limit_date) if limit_date else (jobs, None)
+
+
+def stringify_dates(job: dict[str, Any]) -> dict[str, Any]:
+    """
+    Convert all date fields to strings.
+
+    Args:
+        job: The job dictionary to convert.
+
+    Returns:
+        The job dictionary with all date fields converted to strings.
+    """
+    return {k: v.isoformat() if isinstance(v, datetime) else v for k, v in job.items()}
 
 
 def check_for_stop_signal(
-    data: list[dict[str, str | int | None]],
+    jobs: list[dict[str, str | int | None]],
     remaining_hits: int = 0,
     limit_date: datetime | None = None,
 ) -> bool:
@@ -254,7 +306,7 @@ def check_for_stop_signal(
     Checks if the stop signal should be set based on the provided data, remaining hits, and limit date.
 
     Args:
-        data (list[dict[str, str | int | None]]): The data to check for stop signal.
+        jobs (list[dict[str, str | int | None]]): The data to check for stop signal.
         remaining_hits (int): The remaining hits to check for stop signal.
         limit_date (datetime.date): The limit date to check for stop signal.
 
@@ -265,12 +317,34 @@ def check_for_stop_signal(
     stop_signal = False
     if limit_date:
         logger.debug(f"Checking for stop signal with limit date {limit_date}")
-    if data and remaining_hits and limit_date:
-        dates = [get_date_updated(job=job) for job in data]
-        stop_signal = any(date < limit_date for date in dates)
-    elif remaining_hits and data:
+    if jobs and remaining_hits and limit_date:
+        updated: list[datetime] = [job["last_updated"] for job in jobs]
+        stop_signal = any(date < limit_date for date in updated)
+    elif remaining_hits and jobs:
         stop_signal = False
     return stop_signal
+
+
+def retry(params: dict[str, Any], remaining_hits: int) -> tuple[list[dict[str, str | int | None]] | None, dict[str, int | None], int]:
+    """
+    Retries fetching jobs if a timeout or connection error occurs.
+
+    Args:
+        params (dict): The search parameters for fetching jobs.
+        remaining_hits (int): The number of remaining API hits.
+
+    Returns:
+        tuple: A tuple containing the fetched jobs dictionaries, remainder, and next offset.
+    """
+
+    logger.warning("Received timeout or connection error. Retrying in 10 seconds.")
+    time.sleep(10)
+    logger.info("Retrying scrape.")
+    jobs, remainder, next_offset = fetch_jobs(
+        search_params=params, remaining_hits=remaining_hits
+    )
+
+    return jobs, remainder, next_offset
 
 
 def scrape(
@@ -287,46 +361,39 @@ def scrape(
         dict: A dictionary containing the scraped jobs, remaining hits, and next offset.
 
     """
-    if jobs_found := get_data(event=event).get("jobs_found"):
-        logger.info(f"Found {jobs_found} jobs in previous scrape. Resetting.")
-        jobs_found = 0
-    stop_signal = False
+    jobs, remainder, next_offset, stop_signal, jobs_found = [], 0, 0, False, 0
     params, remaining_hits, limit_date = set_vars(event=event)
-    data, remainder, next_offset = fetch_jobs(
+    jobs, remainder, next_offset = fetch_jobs(
         search_params=params, remaining_hits=remaining_hits
     )
     if isinstance(
-        data, (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError)
+        jobs, (requests.exceptions.ConnectTimeout, requests.exceptions.ConnectionError)
     ):
-        logger.warning("Received timeout or connection error. Retrying in 10 seconds.")
-        time.sleep(10)
-        logger.info("Retrying scrape.")
-        data, remainder, next_offset = fetch_jobs(
-            search_params=params, remaining_hits=remaining_hits
-        )
-
-    stop_signal: bool = check_for_stop_signal(
-        data=data, remaining_hits=remainder, limit_date=limit_date
-    )
-    jobs = data or []
+        jobs, remainder, next_offset = retry(params, remaining_hits)
+    jobs, limit_date = set_dates(jobs, limit_date)
+    if jobs:
+        stop_signal: bool = check_for_stop_signal(jobs, remainder, limit_date)
     remainder: int = 0 if stop_signal else remainder
-    jobs_found: int = len(jobs) if jobs else 0
-    if data and stop_signal:
+    jobs_found: int = len(jobs)
+    if jobs and stop_signal:
         logger.info(
             f"Scrape found {jobs_found} new jobs; returning to state machine"
             "with stop signal"
         )
+        jobs = [job for job in jobs.copy() if job["last_updated"] > limit_date]
     elif stop_signal:
         logger.info(
             "Scrape found no new jobs, informing state machine with stop signal"
         )
-    elif data:
+    elif jobs:
         logger.info(
             f"Scrape found {jobs_found} new jobs with {remaining_hits}"
             "remaining; returning to state machine"
         )
     else:
         logger.info("Scrape found no new jobs, informing state machine")
+    if jobs:
+        jobs = [stringify_dates(job) for job in jobs.copy()]
     return {
         "status": {"statusCode": 200, "state": "InvokeJobScraper"},
         "data": {
@@ -364,16 +431,10 @@ def job_scraper_handler(
         return scrape(event=event, context=context)
 
     except Exception as e:
-        logger.exception(f"Error occurred in Lambda var_replacer: {e}")
-
-        return {
-            "status": {
-                "statusCode": 500,
-                "state": "InvokeJobScraper",
-                "errorFunc": context.function_name,
-                "errorType": type(e).__name__,
-                "errorMessage": str(e),
-                "stackTrace": traceback.format_exc(),
-            },
-            "data": get_data(event=event),
-        }
+        logger.error(f"Error in {context.function_name}: {e}")
+        logger.error("State: InvokeJobScraper")
+        logger.error(traceback.format_exc())
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Entry event for error: {event}")
+        raise e
