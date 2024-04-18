@@ -2001,7 +2001,7 @@ Resources:
                     "longitude": "",
                     "loc_group_id": [],
                     "loc_query": [],
-                    "base_query": "your search query",
+                    "base_query": "",
                     "city": [],
                     "country": [
                       "USA"
@@ -2028,7 +2028,7 @@ Resources:
                     "schedule_type_id": [
                       "Full-Time"
                     ],
-                    "employee_class": [],
+                    "category_type": [],
                     "normalized_location": [],
                     "job_function": [],
                     "is_manager": [],

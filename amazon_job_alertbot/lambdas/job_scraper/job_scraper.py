@@ -86,7 +86,8 @@ def gen_search_url(
         query_params[new_key] = values
 
     for key, value in criteria.items():
-        query_params[key] = value or ""
+        if key != "next_offset":
+            query_params[key] = value or ""
 
     query_string: str = urlencode(query=query_params, doseq=True)
     return f"{url}?{query_string}"

@@ -1,30 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
-    <meta name="author" content="Adam Poulemanos; built using Choices.js by Josh Johnson" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
-    <title>Amazon Job Alertbot</title>
+  <meta name="author" content="Adam Poulemanos; built using Choices.js by Josh Johnson" />
 
-    <meta name="description" content="An interface for generating your own Amazon.jobs alerts template." />
-    <meta name="keywords" content="Amazon.jobs, job alerts, search alerts, job search, job search alerts, Amazon job search" />
-    <meta name="theme-color" content="#0f2c3d" />
+  <title>Amazon Job Alertbot</title>
+
+  <meta name="description"
+    content="An interface for generating your own Amazon.jobs alerts template." />
+  <meta name="keywords"
+    content="Amazon.jobs, job alerts, search alerts, job search, job search alerts, Amazon job search" />
+  <meta name="theme-color" content="#0f2c3d" />
 
 
-    <!-- Optional includes -->
-    <script
-        src="https://cdn.polyfill.io/v3/polyfill.min.js?features=Array.from%2Ces5%2Ces6%2CSymbol%2CSymbol.iterator%2CDOMTokenList%2CObject.assign%2CCustomEvent%2CElement.prototype.classList%2CElement.prototype.closest%2CElement.prototype.dataset%2CArray.prototype.find%2CArray.prototype.includes%2Cfetch"></script>
-    <!-- End optional includes -->
+  <!-- Optional includes -->
+  <script
+    src="https://cdn.polyfill.io/v3/polyfill.min.js?features=Array.from%2Ces5%2Ces6%2CSymbol%2CSymbol.iterator%2CDOMTokenList%2CObject.assign%2CCustomEvent%2CElement.prototype.classList%2CElement.prototype.closest%2CElement.prototype.dataset%2CArray.prototype.find%2CArray.prototype.includes%2Cfetch"></script>
+  <!-- End optional includes -->
 
-    <!-- Choices includes -->
-    <link rel="stylesheet" href="css/main.css" />
-    <script src="js/choices.js"></script>
-    <!-- End Choices includes -->
+  <!-- Choices includes -->
+  <link rel="stylesheet" href="css/main.css" />
+  <script src="js/choices.js"></script>
+  <!-- End Choices includes -->
 
-    <!--[if lt IE 9]>
+  <!--[if lt IE 9]>
         <style>
             .hidden-ie {
             display: none;
@@ -34,1842 +37,1514 @@
             }
         </style>
         <![endif]-->
-  </head>
-  <body>
-    <div class="container">
-    <h1 id="alerts_title_top">Alert Template Generator</h1>
-    <h2 id="alerts_sub_top">Amazon Job Alertbot</h2>
-      <div class="section-search">
-        <span class="tooltip">
-          <p>
-            <strong>supports:</strong> booleans in CAPS (OR, AND, NOT) <strong>|</strong> grouping in parentheses <strong>|</strong> quotes for exact terms <br />
-            <strong>example: (("Solutions Architect" OR Consultant) AND Seattle) NOT ProServe</strong>
-          </p>
-        </span>
-        <input class="form-control" type="text" id="search-bar" />
-      </div>
-      <div class="section">
-        <div id="filter-grid">
-          <div id="selections_grid">
+</head>
 
-          </div>
-          <div id="filters_grid">
-            <h3>SEARCH FILTERS</h3>
-          </div>
-          <div id="characteristics_grid">
-            <h4>JOB CHARACTERISTICS</h4>
-          </div>
-          <div id="business_category_grid">
-            <select data-trigger data-additions='false'
-            id="business_category" class="form-control" multiple
-            >
-              <option placeholder="" value="">TEAM</option>
-              <option value="advertising">Amazon Ads</option>
-              <option value="amazon-customer-service">Amazon Customer Service</option>
-              <option value="amazon-web-services">Amazon Web Services</option>
-              <option value="business-corporate-development">Business & Corporate Development</option>
-              <option value="ecommerce-platform">eCommerce Foundation</option>
-              <option value="fulfillment-operations">Amazon Operations</option>
-              <option value="retail">Amazon Retail</option>
-              <option value="seller-services">Marketplace</option>
-              <option value="subsidiaries">Subsidiaries</option>
-              <option value="amazongo">Amazon Go</option>
-              <option value="kindle-content">Kindle Content</option>
-              <option value="finance">Finance and Global Business Services</option>
-              <option value="transport">Amazon Transportation Services</option>
-              <option value="operations-technology">Operations Technology</option>
-              <option value="humanresources">Human Resources</option>
-              <option value="legal-team">Legal</option>
-              <option value="student-programs">Student Programs</option>
-              <option value="consumer-payments">Amazon Payments</option>
-              <option value="consumerengagement">Shopping</option>
-              <option value="amazonfresh">Amazon Fresh</option>
-              <option value="customer-experience-business-trends">Customer Experience and Business Trends</option>
-              <option value="amazonian-experience-and-technology">Amazonian Experience and Technology</option>
-              <option value="amazon-entertainment">Amazon Entertainment</option>
-              <option value="selling-partner-services">Selling Partner Services</option>
-              <option value="gca">Global Communications and Community Impact</option>
-              <option value="cross-channel-cross-category-marketing">XCM (Cross-Channel, Cross-Category Marketing)</option>
-              <option value="HSST">Amazon Health Services</option>
-              <option value="amazon-business">Amazon Business</option>
-              <option value="amazon-security">Amazon Security</option>
-              <option value="alexa-and-amazon-devices">Alexa and Amazon Devices</option>
-            </select>
-          </div>
-          <div id="category_grid">
-            <select
-              data-trigger data-additions="false"
-              id="category" class="form-control" multiple
-            >
-              <option placeholder="" value="">JOB CATEGORY</option>
-              <option value="software-development">Software Development</option>
-              <option value="administrative-support">Administrative Support</option>
-              <option value="audio-video-photography-production">Audio / Video / Photography Production</option>
-              <option value="business-merchant-development">Business & Merchant Development</option>
-              <option value="business-intelligence">Business Intelligence</option>
-              <option value="buying-planning-instock-management">Buying, Planning, & Instock Management</option>
-              <option value="customer-service">Customer Service</option>
-              <option value="database-administration">Database Administration</option>
-              <option value="design">Amazon Design</option>
-              <option value="economics">Economics</option>
-              <option value="editorial-writing-content-management">Editorial, Writing, & Content Management</option>
-              <option value="facilities-maintenance-real-estate">Facilities, Maintenance, & Real Estate</option>
-              <option value="finance-accounting">Finance and Global Business Services</option>
-              <option value="fulfillment-operations-management">Fulfillment & Operations Management</option>
-              <option value="fulfillment-warehouse-associate">Fulfillment Associate</option>
-              <option value="hardware-development">Hardware Development</option>
-              <option value="human-resources">Human Resources</option>
-              <option value="investigation-loss-prevention">Investigation & Loss Prevention</option>
-              <option value="leadership-development-training">Leadership Development & Training</option>
-              <option value="legal">Legal</option>
-              <option value="machine-learning-science">Machine Learning Science</option>
-              <option value="marketing-pr">Marketing</option>
-              <option value="medical-health-safety">Medical, Health, & Safety</option>
-              <option value="operations-it-support-engineering">Operations, IT, & Support Engineering</option>
-              <option value="project-program-product-management-non-tech">Project/Program/Product Management--Non-Tech</option>
-              <option
-                value="project-program-product-management-technical"
-              >Project/Program/Product Management--Technical</option>
-              <option value="research-science">Research Science</option>
-              <option value="sales-advertising-account-management">Sales, Advertising, & Account Management</option>
-              <option value="solutions-architect">Solutions Architect</option>
-              <option value="supply-chain-transportation-management">Supply Chain/Transportation Management</option>
-              <option value="systems-quality-security-engineering">Systems, Quality, & Security Engineering</option>
-              <option value="public-policy">Public Policy</option>
-              <option value="data-science">Data Science</option>
-              <option value="public-relations">Public Relations & Communications</option>
-            </select>
-          </div>
-          <div id="category_type_grid">
-            <select
-              data-trigger data-additions="false"
-              id="category_type" class="form-control" multiple
-            >
-              <option placeholder="" value="">JOB TYPE</option>
-              <option value="Corporate">Corporate</option>
-              <option value="Fulfillment-center">Fulfillment Center</option>
-              <option value="Customer Service">Customer Service</option>
-              <option value="Work from Home">Work from Home</option>
-              <option value="studentprograms">Student Programs</option>
-            </select>
-          </div>
-          <div id="job_type_grid">
-            <select
-              data-trigger data-additions="false"
-              id="job_type" class="form-control" multiple>
-              <option placeholder="" value="">SCHEDULE</option>
-              <option value="Full-Time">Full-Time</option>
-              <option value="Part-Time">Part-Time</option>
-              <option value="Seasonal">Seasonal</option>
-            </select>
-          </div>
-          <div id="is_manager_grid">
-            <select data-trigger data-additions="false" id="is_manager" class="form-control">
-              <option placeholder="" value="">ROLE TYPE</option>
-              <option value="1">Manager</option>
-              <option value="0">Individual Contributor</option>
-            </select>
-          </div>
-          <div id="locations_grid">
-            <h4>LOCATION</h4>
-          </div>
-          <div id="country_grid">
-            <div class="form-control" id="country" data-trigger data-additions="true">
-              <option placeholder="" value="">COUNTRY/REGION</option>
-              <option value="USA">United States</option>
-              <option value="IND">India</option>
-              <option value="JPN">Japan</option>
-              <option value="DEU">Germany</option>
-              <option value="GBR">United Kingdom</option>
-              <option value="CHN">China</option>
-              <option value="MEX">Mexico</option>
-              <option value="ESP">Spain</option>
-              <option value="LUX">Luxembourg</option>
-              <option value="CAN">Canada</option>
-              <option value="AUS">Australia</option>
-              <option value="FRA">France</option>
-              <option value="IRL">Ireland</option>
-              <option value="BRA">Brazil</option>
-              <option value="ITA">Italy</option>
-              <option value="CRI">Costa Rica</option>
-              <option value="POL">Poland</option>
-              <option value="EGY">Egypt</option>
-              <option value="TWN">Taiwan</option>
-              <option value="SGP">Singapore</option>
-              <option value="SVK">Slovakia</option>
-              <option value="ARE">United Arab Emirates</option>
-              <option value="PHL">Philippines</option>
-              <option value="ZAF">South Africa</option>
-              <option value="KOR">Korea, Republic of</option>
-              <option value="ISR">Israel</option>
-              <option value="CZE">Czech Republic</option>
-              <option value="SAU">Saudi Arabia</option>
-              <option value="ROU">Romania</option>
-              <option value="TUR">Turkey</option>
-              <option value="NLD">Netherlands</option>
-              <option value="JOR">Jordan</option>
-              <option value="NZL">New Zealand</option>
-              <option value="SWE">Sweden</option>
-              <option value="AUT">Austria</option>
-              <option value="BEL">Belgium</option>
-              <option value="HKG">Hong Kong</option>
-              <option value="THA">Thailand</option>
-              <option value="VNM">Viet Nam</option>
-              <option value="HRV">Croatia</option>
-              <option value="CHE">Switzerland</option>
-              <option value="IDN">Indonesia</option>
-              <option value="COL">Colombia</option>
-              <option value="MYS">Malaysia</option>
-              <option value="KEN">Kenya</option>
-              <option value="CHL">Chile</option>
-              <option value="ARG">Argentina</option>
-              <option value="FIN">Finland</option>
-              <option value="DNK">Denmark</option>
-              <option value="BHR">Bahrain</option>
-              <option value="PRT">Portugal</option>
-              <option value="EST">Estonia</option>
-              <option value="GRC">Greece</option>
-              <option value="KWT">Kuwait</option>
-              <option value="MAR">Morocco</option>
-              <option value="NOR">Norway</option>
-              <option value="PER">Peru</option>
-              <option value="PRI">Puerto Rico</option>
-            </div>
-          </div>
-          <div id="state_grid">
-            <select
-              data-trigger data-additions="true"
-              id="state" class="form-control" multiple>
-              <option placeholder="" value="">STATE/PROVINCE</option>
-              <option value="Washington">Washington</option>
-              <option value="Virginia">Virginia</option>
-              <option value="California">California</option>
-              <option value="Karnataka">Karnataka</option>
-              <option value="New York">New York</option>
-              <option value="Texas">Texas</option>
-              <option value="Tennessee">Tennessee</option>
-              <option value="Telangana">Telangana</option>
-              <option value="Massachusetts">Massachusetts</option>
-              <option value="Luxembourg">Luxembourg</option>
-              <option value="Arizona">Arizona</option>
-              <option value="Tamil Nadu">Tamil Nadu</option>
-              <option value="Ohio">Ohio</option>
-              <option value="Mexico City">Mexico City</option>
-              <option value="Berlin">Berlin</option>
-              <option value="Illinois">Illinois</option>
-              <option value="Bavaria">Bavaria</option>
-              <option value="Georgia">Georgia</option>
-              <option value="Maharashtra">Maharashtra</option>
-              <option value="New South Wales">New South Wales</option>
-              <option value="Sao Paulo">Sao Paulo</option>
-              <option value="North-Rhine-Westphalia">North-Rhine-Westphalia</option>
-              <option value="Colorado">Colorado</option>
-              <option value="Ontario">Ontario</option>
-              <option value="Community of Madrid">Community of Madrid</option>
-              <option value="Ile-de-France">Ile-de-France</option>
-              <option value="Catalonia">Catalonia</option>
-              <option value="Oregon">Oregon</option>
-              <option value="New Jersey">New Jersey</option>
-              <option value="Lower-Saxony">Lower-Saxony</option>
-              <option value="Maryland">Maryland</option>
-              <option value="Florida">Florida</option>
-              <option value="Pennsylvania">Pennsylvania</option>
-              <option value="Haryana">Haryana</option>
-              <option value="Hesse">Hesse</option>
-              <option value="British Columbia">British Columbia</option>
-              <option value="Victoria">Victoria</option>
-              <option value="Bratislavský kraj">Bratislavský kraj</option>
-              <option value="Lombardy">Lombardy</option>
-              <option value="National Capital Region">Manilla National Capital Region</option>
-              <option value="Minnesota">Minnesota</option>
-              <option value="San Jose">San Jose</option>
-              <option value="Western Cape">Western Cape</option>
-              <option value="Jalisco">Jalisco</option>
-              <option value="Michigan">Michigan</option>
-              <option value="District of Columbia">District of Columbia</option>
-              <option value="Indiana">Indiana</option>
-              <option value="Istanbul">Istanbul</option>
-              <option value="Tel Aviv">Tel Aviv</option>
-              <option value="Heredia">Heredia</option>
-              <option value="Saxony">Saxony</option>
-              <option value="Quebec">Quebec</option>
-              <option value="Piedmont">Piedmont</option>
-              <option value="Louisiana">Louisiana</option>
-              <option value="North Holland">North Holland</option>
-              <option value="Rhineland-Palatinate">Rhineland-Palatinate</option>
-              <option value="Uttar Pradesh">Uttar Pradesh</option>
-              <option value="Kentucky">Kentucky</option>
-              <option value="Baden-Wurttemberg">Baden-Wurttemberg</option>
-              <option value="Pomeranian Voivodeship">Pomeranian Voivodeship</option>
-              <option value="Thuringia">Thuringia</option>
-              <option value="North Carolina">North Carolina</option>
-              <option value="Delhi">Delhi</option>
-              <option value="Auvergne-Rhone-Alpes">Auvergne-Rhone-Alpes</option>
-              <option value="Prague">Prague</option>
-              <option value="Haifa">Haifa</option>
-              <option value="Mississippi">Mississippi</option>
-              <option value="Silesian Voivodeship">Silesian Voivodeship</option>
-              <option value="Berkshire">Berkshire</option>
-              <option value="Nuevo Leon">Nuevo Leon</option>
-              <option value="Brandenburg">Brandenburg</option>
-              <option value="EDOMEX">EDOMEX</option>
-              <option value="Emilia-Romagna">Emilia-Romagna</option>
-              <option value="Gujarat">Gujarat</option>
-              <option value="Queensland">Queensland</option>
-              <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
-              <option value="Wisconsin">Wisconsin</option>
-              <option value="Auckland">Auckland</option>
-              <option value="Hamburg">Hamburg</option>
-              <option value="Veneto">Veneto</option>
-              <option value="West Bengal">West Bengal</option>
-              <option value="Hauts-de-France">Hauts-de-France</option>
-              <option value="Lubusz Voivodeship">Lubusz Voivodeship</option>
-              <option value="Aragon">Aragon</option>
-              <option value="Nevada">Nevada</option>
-              <option value="Missouri">Missouri</option>
-              <option value="Hong Kong">Hong Kong</option>
-              <option value="Alberta">Alberta</option>
-              <option value="Bremen">Bremen</option>
-              <option value="Centre-Val de Loire">Centre-Val de Loire</option>
-              <option value="Guanajuato">Guanajuato</option>
-              <option value="Latium">Latium</option>
-              <option value="Wellington">Wellington</option>
-              <option value="Woj. Mazowieckie">Woj. Mazowieckie</option>
-              <option value="Gauteng">Gauteng</option>
-              <option value="Grand Est">Grand Est</option>
-              <option value="New Mexico">New Mexico</option>
-              <option value="Bourgogne-Franche-Comte">Bourgogne-Franche-Comte</option>
-              <option value="Connecticut">Connecticut</option>
-              <option value="Styria">Styria</option>
-              <option value="Zurich">Zurich</option>
-              <option value="Brussels">Brussels</option>
-              <option value="Delaware">Delaware</option>
-              <option value="Kansas">Kansas</option>
-              <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
-              <option value="Queretaro">Queretaro</option>
-              <option value="Iowa">Iowa</option>
-              <option value="Lower Silesian Voivodeship">Lower Silesian Voivodeship</option>
-              <option value="Principality of Asturias">Principality of Asturias</option>
-              <option value="Rajasthan">Rajasthan</option>
-              <option value="South Carolina">South Carolina</option>
-              <option value="Stockholm County">Stockholm County</option>
-              <option value="Středočeský kraj">Středočeský kraj</option>
-              <option value="Wilayah Persekutuan Kuala Lumpur">Wilayah Persekutuan Kuala Lumpur</option>
-              <option value="Central Visayas">Central Visayas</option>
-              <option value="Lodz Voivodeship">Lodz Voivodeship</option>
-              <option value="Nairobi">Nairobi</option>
-              <option value="Oklahoma">Oklahoma</option>
-              <option value="Schleswig-Holstein">Schleswig-Holstein</option>
-              <option value="South Dakota">South Dakota</option>
-              <option value="Utah">Utah</option>
-              <option value="Castille-La Mancha">Castille-La Mancha</option>
-              <option value="Nebraska">Nebraska</option>
-              <option value="North Dakota">North Dakota</option>
-              <option value="Olomoucký kraj">Olomoucký kraj</option>
-              <option value="Sodermanland County">Sodermanland County</option>
-              <option value="Vastmanland County">Vastmanland County</option>
-              <option value="Arkansas">Arkansas</option>
-              <option value="Flanders">Flanders</option>
-              <option value="Provence-Alpes-Cote d'Azur">Provence-Alpes-Cote d'Azur</option>
-              <option value="Punjab">Punjab</option>
-              <option value="Region Santiago Metropolitan">Region Santiago Metropolitan</option>
-              <option value="South Holland">South Holland</option>
-              <option value="Western Australia">Western Australia</option>
-              <option value="Abruzzo">Abruzzo</option>
-              <option value="Buenos Aires Autonomous City">Buenos Aires Autonomous City</option>
-              <option value="Murcia Region">Murcia Region</option>
-              <option value="New Hampshire">New Hampshire</option>
-              <option value="Nouvelle-Aquitaine">Nouvelle-Aquitaine</option>
-              <option value="Puebla">Puebla</option>
-              <option value="Yucatan">Yucatan</option>
-              <option value="Ústecký kraj">Ústecký kraj</option>
-              <option value="Alabama">Alabama</option>
-              <option value="Andhra Pradesh">Andhra Pradesh</option>
-              <option value="Loire Region">Loire Region</option>
-              <option value="Marches">Marches</option>
-              <option value="Tuscany">Tuscany</option>
-              <option value="Valencian Community">Valencian Community</option>
-              <option value="West Pomeranian Voivodeship">West Pomeranian Voivodeship</option>
-              <option value="Brittany">Brittany</option>
-              <option value="Coahuila">Coahuila</option>
-              <option value="Friuli-Venezia Giulia">Friuli-Venezia Giulia</option>
-              <option value="Greater Poland Voivodeship">Greater Poland Voivodeship</option>
-              <option value="Madhya Pradesh">Madhya Pradesh</option>
-              <option value="Normandy">Normandy</option>
-              <option value="Occitanie">Occitanie</option>
-              <option value="Quintana Roo">Quintana Roo</option>
-              <option value="Sonora">Sonora</option>
-              <option value="Vienna">Vienna</option>
-              <option value="Andalucia">Andalucia</option>
-              <option value="Assam">Assam</option>
-              <option value="Australian Capital Territory">Australian Capital Territory</option>
-              <option value="Baja California">Baja California</option>
-              <option value="Capital">Capital</option>
-              <option value="Lower Austria">Lower Austria</option>
-              <option value="Rio de Janeiro">Rio de Janeiro</option>
-              <option value="Saarland">Saarland</option>
-              <option value="Sinaloa">Sinaloa</option>
-              <option value="West and Inner Finland">West and Inner Finland</option>
-              <option value="Bihar">Bihar</option>
-              <option value="Campania">Campania</option>
-              <option value="Carinthia">Carinthia</option>
-              <option value="Castilla and Leon">Castilla and Leon</option>
-              <option value="Galicia">Galicia</option>
-              <option value="Geneva">Geneva</option>
-              <option value="Hawaii">Hawaii</option>
-              <option value="Kerala">Kerala</option>
-              <option value="Limburg">Limburg</option>
-              <option value="Manitoba">Manitoba</option>
-              <option value="San Luis Potosi">San Luis Potosi</option>
-              <option value="Trentino-Alto Adige">Trentino-Alto Adige</option>
-              <option value="Trnavský kraj">Trnavský kraj</option>
-              <option value="Amazonas">Amazonas</option>
-              <option value="Apulia">Apulia</option>
-              <option value="Attiki">Attiki</option>
-              <option value="Callao">Callao</option>
-              <option value="Ceara">Ceara</option>
-              <option value="Chihuahua">Chihuahua</option>
-              <option value="Distrito Federal">Distrito Federal</option>
-              <option value="Idaho">Idaho</option>
-              <option value="Lesser Poland Voivodeship">Lesser Poland Voivodeship</option>
-              <option value="Mexico">Mexico</option>
-              <option value="Minas Gerais">Minas Gerais</option>
-              <option value="Morelos">Morelos</option>
-              <option value="Nova Scotia">Nova Scotia</option>
-              <option value="Oslo">Oslo</option>
-              <option value="Para">Para</option>
-              <option value="Pernambuco">Pernambuco</option>
-              <option value="Puerto Rico">Puerto Rico</option>
-              <option value="Rabat - Sale - Kenitra">Rabat - Sale - Kenitra</option>
-              <option value="Rhode Island">Rhode Island</option>
-              <option value="Sardinia">Sardinia</option>
-              <option value="South Australia">South Australia</option>
-              <option value="South Finland">South Finland</option>
-              <option value="Tabasco">Tabasco</option>
-              <option value="West Virginia">West Virginia</option>
-            </select>
-          </div>
-          <div id="city_grid">
-            <select data-trigger data-additions="true" id="cities" class="form-control">
-              <option placeholder="" value="">City</option>
-              <option value="Seattle">Seattle</option>
-              <option value="Bellevue">Bellevue</option>
-              <option value="Bengaluru">Bengaluru</option>
-              <option value="Arlington">Arlington</option>
-              <option value="New York">New York</option>
-              <option value="Austin">Austin</option>
-              <option value="Tokyo">Tokyo</option>
-              <option value="Nashville">Nashville</option>
-              <option value="Hyderabad">Hyderabad</option>
-              <option value="London">London</option>
-              <option value="Chiba">Chiba</option>
-              <option value="Redmond">Redmond</option>
-              <option value="Herndon">Herndon</option>
-              <option value="Luxembourg">Luxembourg</option>
-              <option value="Sunnyvale">Sunnyvale</option>
-              <option value="San Francisco">San Francisco</option>
-              <option value="Boston">Boston</option>
-              <option value="Chennai">Chennai</option>
-              <option value="Dublin">Dublin</option>
-              <option value="Dallas">Dallas</option>
-              <option value="Mexico City">Mexico City</option>
-              <option value="Berlin">Berlin</option>
-              <option value="Shanghai">Shanghai</option>
-              <option value="Chicago">Chicago</option>
-              <option value="Sydney">Sydney</option>
-              <option value="Sao Paulo">Sao Paulo</option>
-              <option value="North Reading">North Reading</option>
-              <option value="Atlanta">Atlanta</option>
-              <option value="Tempe">Tempe</option>
-              <option value="Shenzhen">Shenzhen</option>
-              <option value="Mumbai">Mumbai</option>
-              <option value="Toronto">Toronto</option>
-              <option value="Beijing">Beijing</option>
-              <option value="Denver">Denver</option>
-              <option value="Munich">Munich</option>
-              <option value="Santa Clara">Santa Clara</option>
-              <option value="Madrid">Madrid</option>
-              <option value="Los Angeles">Los Angeles</option>
-              <option value="Culver City">Culver City</option>
-              <option value="Santa Monica">Santa Monica</option>
-              <option value="Barcelona">Barcelona</option>
-              <option value="Westborough">Westborough</option>
-              <option value="Irvine">Irvine</option>
-              <option value="San Jose">San Jose</option>
-              <option value="Cupertino">Cupertino</option>
-              <option value="Taipei City">Taipei City</option>
-              <option value="Singapore">Singapore</option>
-              <option value="Cairo">Cairo</option>
-              <option value="Gurugram">Gurugram</option>
-              <option value="Phoenix">Phoenix</option>
-              <option value="Vancouver">Vancouver</option>
-              <option value="San Diego">San Diego</option>
-              <option value="Bratislava">Bratislava</option>
-              <option value="Dubai">Dubai</option>
-              <option value="Melbourne">Melbourne</option>
-              <option value="Cape Town">Cape Town</option>
-              <option value="Palo Alto">Palo Alto</option>
-              <option value="Houston">Houston</option>
-              <option value="Milan">Milan</option>
-              <option value="Chengdu">Chengdu</option>
-              <option value="Seoul">Seoul</option>
-              <option value="Guadalajara">Guadalajara</option>
-              <option value="Minneapolis">Minneapolis</option>
-              <option value="Frankfurt">Frankfurt</option>
-              <option value="Hilliard">Hilliard</option>
-              <option value="Washington">Washington</option>
-              <option value="Clichy">Clichy</option>
-              <option value="New Albany">New Albany</option>
-              <option value="Istanbul">Istanbul</option>
-              <option value="Tel Aviv-Yafo">Tel Aviv-Yafo</option>
-              <option value="Columbus">Columbus</option>
-              <option value="Osaka">Osaka</option>
-              <option value="Portland">Portland</option>
-              <option value="Cambridge">Cambridge</option>
-              <option value="Maebashi">Maebashi</option>
-              <option value="Amsterdam">Amsterdam</option>
-              <option value="Manchester">Manchester</option>
-              <option value="Riyadh">Riyadh</option>
-              <option value="Sterling">Sterling</option>
-              <option value="Detroit">Detroit</option>
-              <option value="Kirkland">Kirkland</option>
-              <option value="Paris">Paris</option>
-              <option value="Manassas">Manassas</option>
-              <option value="East Palo Alto">East Palo Alto</option>
-              <option value="Gdansk">Gdansk</option>
-              <option value="Jersey City">Jersey City</option>
-              <option value="Kawaguchi">Kawaguchi</option>
-              <option value="Manila">Manila</option>
-              <option value="Hawthorne">Hawthorne</option>
-              <option value="Kanazawa">Kanazawa</option>
-              <option value="West Hollywood">West Hollywood</option>
-              <option value="Pasay City">Pasay City</option>
-              <option value="Boardman">Boardman</option>
-              <option value="Horn-Bad Meinberg">Horn-Bad Meinberg</option>
-              <option value="Bucharest">Bucharest</option>
-              <option value="Heredia">Heredia</option>
-              <option value="Simi Valley">Simi Valley</option>
-              <option value="Fukuoka">Fukuoka</option>
-              <option value="Prague">Prague</option>
-              <option value="Annapolis Junction">Annapolis Junction</option>
-              <option value="Haifa">Haifa</option>
-              <option value="Chantilly">Chantilly</option>
-              <option value="Umatilla">Umatilla</option>
-              <option value="Thames Valley">Thames Valley</option>
-              <option value="Amman">Amman</option>
-              <option value="Dortmund">Dortmund</option>
-              <option value="Hamburg">Hamburg</option>
-              <option value="Hangzhou">Hangzhou</option>
-              <option value="Hsinchu City">Hsinchu City</option>
-              <option value="Pune">Pune</option>
-              <option value="Ashburn">Ashburn</option>
-              <option value="Coalville">Coalville</option>
-              <option value="Plain City">Plain City</option>
-              <option value="Sayama">Sayama</option>
-              <option value="Columbia">Columbia</option>
-              <option value="Großenkneten">Großenkneten</option>
-              <option value="Helmstedt">Helmstedt</option>
-              <option value="Iasi">Iasi</option>
-              <option value="Ibaraki">Ibaraki</option>
-              <option value="Achim">Achim</option>
-              <option value="Auckland">Auckland</option>
-              <option value="Erfurt">Erfurt</option>
-              <option value="Leipzig">Leipzig</option>
-              <option value="Sagamihara">Sagamihara</option>
-              <option value="Shreveport">Shreveport</option>
-              <option value="Tenri-Shi">Tenri-Shi</option>
-              <option value="Canton">Canton</option>
-              <option value="Malvern">Malvern</option>
-              <option value="Merritt Island">Merritt Island</option>
-              <option value="Montreal">Montreal</option>
-              <option value="Baltimore">Baltimore</option>
-              <option value="Brisbane">Brisbane</option>
-              <option value="Mönchengladbach">Mönchengladbach</option>
-              <option value="Oelde">Oelde</option>
-              <option value="Tepotzotlán">Tepotzotlán</option>
-              <option value="Świebodzin">Świebodzin</option>
-              <option value="Courbevoie">Courbevoie</option>
-              <option value="Goodyear">Goodyear</option>
-              <option value="Hermiston">Hermiston</option>
-              <option value="Ahmedabad">Ahmedabad</option>
-              <option value="Alessandria">Alessandria</option>
-              <option value="Baton Rouge">Baton Rouge</option>
-              <option value="Cologne">Cologne</option>
-              <option value="Gera">Gera</option>
-              <option value="Nonoichi">Nonoichi</option>
-              <option value="Sendai">Sendai</option>
-              <option value="Wilmington">Wilmington</option>
-              <option value="Bangkok">Bangkok</option>
-              <option value="Erlanger">Erlanger</option>
-              <option value="Gattendorf">Gattendorf</option>
-              <option value="Jeddah">Jeddah</option>
-              <option value="Machida-Shi">Machida-Shi</option>
-              <option value="Pittsburgh">Pittsburgh</option>
-              <option value="Sumner">Sumner</option>
-              <option value="Sülzetal">Sülzetal</option>
-              <option value="Zaragoza">Zaragoza</option>
-              <option value="Fuchu-Shi">Fuchu-Shi</option>
-              <option value="Gorzyce">Gorzyce</option>
-              <option value="León">León</option>
-              <option value="Lyon">Lyon</option>
-              <option value="Newark">Newark</option>
-              <option value="Noida">Noida</option>
-              <option value="Oceanside">Oceanside</option>
-              <option value="Ota">Ota</option>
-              <option value="Sakai">Sakai</option>
-              <option value="Thane">Thane</option>
-              <option value="Tilbury">Tilbury</option>
-              <option value="Bremen">Bremen</option>
-              <option value="Delhi">Delhi</option>
-              <option value="Dusseldorf">Dusseldorf</option>
-              <option value="Kobe">Kobe</option>
-              <option value="Miami">Miami</option>
-              <option value="Wellington">Wellington</option>
-              <option value="Yotsukaido-Shi">Yotsukaido-Shi</option>
-              <option value="Aurora">Aurora</option>
-              <option value="Avondale">Avondale</option>
-              <option value="Brétigny-sur-Orge">Brétigny-sur-Orge</option>
-              <option value="Eggolsheim">Eggolsheim</option>
-              <option value="Everett">Everett</option>
-              <option value="Graben">Graben</option>
-              <option value="Nagareyama-Shi">Nagareyama-Shi</option>
-              <option value="Warsaw">Warsaw</option>
-              <option value="Zagreb">Zagreb</option>
-              <option value="Amagasaki">Amagasaki</option>
-              <option value="Jakarta">Jakarta</option>
-              <option value="Kaiserslautern">Kaiserslautern</option>
-              <option value="Kawajima">Kawajima</option>
-              <option value="Niigata">Niigata</option>
-              <option value="Pasadena">Pasadena</option>
-              <option value="Pasco">Pasco</option>
-              <option value="Zapopan">Zapopan</option>
-              <option value="Abu Dhabi">Abu Dhabi</option>
-              <option value="Apodaca">Apodaca</option>
-              <option value="Bad Hersfeld">Bad Hersfeld</option>
-              <option value="Bogota, D.C.">Bogota, D.C.</option>
-              <option value="Bristol">Bristol</option>
-              <option value="Cork">Cork</option>
-              <option value="Dresden">Dresden</option>
-              <option value="Hanoi">Hanoi</option>
-              <option value="Hensley Park">Hensley Park</option>
-              <option value="Jamaica Plain">Jamaica Plain</option>
-              <option value="Kobern-Gondorf">Kobern-Gondorf</option>
-              <option value="New Delhi">New Delhi</option>
-              <option value="Premstätten">Premstätten</option>
-              <option value="Wakefield">Wakefield</option>
-              <option value="Werne">Werne</option>
-              <option value="Witten">Witten</option>
-              <option value="Zurich">Zurich</option>
-              <option value="Breinigsville">Breinigsville</option>
-              <option value="Brussels">Brussels</option>
-              <option value="Doncaster">Doncaster</option>
-              <option value="Emsbüren">Emsbüren</option>
-              <option value="Frankenthal">Frankenthal</option>
-              <option value="Gernsheim">Gernsheim</option>
-              <option value="Girona">Girona</option>
-              <option value="Hiroshima">Hiroshima</option>
-              <option value="Lucknow">Lucknow</option>
-              <option value="Mountain View">Mountain View</option>
-              <option value="Nagoya">Nagoya</option>
-              <option value="Oppeano">Oppeano</option>
-              <option value="Paderborn">Paderborn</option>
-              <option value="Spilamberto">Spilamberto</option>
-              <option value="Tracy">Tracy</option>
-              <option value="Union City">Union City</option>
-              <option value="Wan Chai">Wan Chai</option>
-              <option value="Winsen (Luhe)">Winsen (Luhe)</option>
-              <option value="Bielefeld">Bielefeld</option>
-              <option value="Cuauhtémoc">Cuauhtémoc</option>
-              <option value="Dobrovíz">Dobrovíz</option>
-              <option value="Edinburgh">Edinburgh</option>
-              <option value="Edison">Edison</option>
-              <option value="Erding">Erding</option>
-              <option value="Fredericksburg">Fredericksburg</option>
-              <option value="Hollister">Hollister</option>
-              <option value="Kuala Lumpur">Kuala Lumpur</option>
-              <option value="Kyoto">Kyoto</option>
-              <option value="Las Vegas">Las Vegas</option>
-              <option value="Louisville">Louisville</option>
-              <option value="Ome-Shi">Ome-Shi</option>
-              <option value="Portage">Portage</option>
-              <option value="Richmond">Richmond</option>
-              <option value="Rochester">Rochester</option>
-              <option value="Schönefeld">Schönefeld</option>
-              <option value="Siero">Siero</option>
-              <option value="Sosnowiec">Sosnowiec</option>
-              <option value="Stockholm">Stockholm</option>
-              <option value="Tajimi">Tajimi</option>
-              <option value="Tosu">Tosu</option>
-              <option value="Alexandria">Alexandria</option>
-              <option value="Castel San Giovanni">Castel San Giovanni</option>
-              <option value="Cebu City">Cebu City</option>
-              <option value="Daxian">Daxian</option>
-              <option value="Fort Worth">Fort Worth</option>
-              <option value="Guangzhou">Guangzhou</option>
-              <option value="Hanover">Hanover</option>
-              <option value="Heidenheim an der Brenz">Heidenheim an der Brenz</option>
-              <option value="Hirakata">Hirakata</option>
-              <option value="Ilayangudi">Ilayangudi</option>
-              <option value="Kemps Creek">Kemps Creek</option>
-              <option value="Kolkata">Kolkata</option>
-              <option value="Leeds">Leeds</option>
-              <option value="Nairobi">Nairobi</option>
-              <option value="Ningbo">Ningbo</option>
-              <option value="Novara">Novara</option>
-              <option value="Olching">Olching</option>
-              <option value="Plainfield">Plainfield</option>
-              <option value="Queretaro">Queretaro</option>
-              <option value="Raleigh">Raleigh</option>
-              <option value="Rheinberg">Rheinberg</option>
-              <option value="San Fernando de Henares">San Fernando de Henares</option>
-              <option value="Satolas-et-Bonce">Satolas-et-Bonce</option>
-              <option value="Sioux Falls">Sioux Falls</option>
-              <option value="Sparrows Point">Sparrows Point</option>
-              <option value="Swindon">Swindon</option>
-              <option value="Waterfall">Waterfall</option>
-              <option value="Aachen">Aachen</option>
-              <option value="Augny">Augny</option>
-              <option value="Beverly Hills">Beverly Hills</option>
-              <option value="Bremerhaven">Bremerhaven</option>
-              <option value="Coventry">Coventry</option>
-              <option value="Davenport">Davenport</option>
-              <option value="Fargo">Fargo</option>
-              <option value="Fort Wayne">Fort Wayne</option>
-              <option value="Garbsen">Garbsen</option>
-              <option value="Garland">Garland</option>
-              <option value="Hiratsuka">Hiratsuka</option>
-              <option value="Homestead">Homestead</option>
-              <option value="Illescas">Illescas</option>
-              <option value="Kawasaki">Kawasaki</option>
-              <option value="Kojetín">Kojetín</option>
-              <option value="Miyagi">Miyagi</option>
-              <option value="New Stanton">New Stanton</option>
-              <option value="Odawara">Odawara</option>
-              <option value="Ottawa">Ottawa</option>
-              <option value="Port St Lucie">Port St Lucie</option>
-              <option value="Redditch">Redditch</option>
-              <option value="Rovigo">Rovigo</option>
-              <option value="St Louis">St Louis</option>
-              <option value="Staten Island">Staten Island</option>
-              <option value="Stockton">Stockton</option>
-              <option value="Vasteras">Vasteras</option>
-              <option value="Weybridge">Weybridge</option>
-              <option value="Albuquerque">Albuquerque</option>
-              <option value="Buckeye">Buckeye</option>
-              <option value="Cartersville">Cartersville</option>
-              <option value="Charlotte">Charlotte</option>
-              <option value="Cloppenburg">Cloppenburg</option>
-              <option value="Culpeper">Culpeper</option>
-              <option value="Dunstable">Dunstable</option>
-              <option value="Essen">Essen</option>
-              <option value="Giza">Giza</option>
-              <option value="Greenwood">Greenwood</option>
-              <option value="Guadalupe">Guadalupe</option>
-              <option value="Hayward">Hayward</option>
-              <option value="Kansas City">Kansas City</option>
-              <option value="Kenosha">Kenosha</option>
-              <option value="Kent">Kent</option>
-              <option value="Kobierzyce">Kobierzyce</option>
-              <option value="Lansing">Lansing</option>
-              <option value="Lauwin-Planque">Lauwin-Planque</option>
-              <option value="Laval">Laval</option>
-              <option value="Lebanon">Lebanon</option>
-              <option value="Little Rock">Little Rock</option>
-              <option value="Liverpool">Liverpool</option>
-              <option value="Mansfield">Mansfield</option>
-              <option value="North Andover">North Andover</option>
-              <option value="Oklahoma City">Oklahoma City</option>
-              <option value="Pforzheim">Pforzheim</option>
-              <option value="Pooler">Pooler</option>
-              <option value="Reading">Reading</option>
-              <option value="Rome">Rome</option>
-              <option value="Sacramento">Sacramento</option>
-              <option value="Sakado-Shi">Sakado-Shi</option>
-              <option value="Santiago">Santiago</option>
-              <option value="Saran">Saran</option>
-              <option value="Senlis">Senlis</option>
-              <option value="Shakopee">Shakopee</option>
-              <option value="Shepherdsville">Shepherdsville</option>
-              <option value="Stoughton">Stoughton</option>
-              <option value="Suffolk">Suffolk</option>
-              <option value="Werder (Havel)">Werder (Havel)</option>
-              <option value="Bad Oldesloe">Bad Oldesloe</option>
-              <option value="Buenos Aires City">Buenos Aires City</option>
-              <option value="Cajamar">Cajamar</option>
-              <option value="Carteret">Carteret</option>
-              <option value="Chojnów (Gmina)">Chojnów (Gmina)</option>
-              <option value="Clarksville">Clarksville</option>
-              <option value="Darlington">Darlington</option>
-              <option value="Dunfermline">Dunfermline</option>
-              <option value="Durham">Durham</option>
-              <option value="Emden">Emden</option>
-              <option value="Eskilstuna">Eskilstuna</option>
-              <option value="Florence">Florence</option>
-              <option value="Franklin">Franklin</option>
-              <option value="Gateshead">Gateshead</option>
-              <option value="Hagerstown">Hagerstown</option>
-              <option value="Hemel Hempstead">Hemel Hempstead</option>
-              <option value="Hong Kong">Hong Kong</option>
-              <option value="Hyogo-Ku">Hyogo-Ku</option>
-              <option value="Jackson">Jackson</option>
-              <option value="Jirkov">Jirkov</option>
-              <option value="Joliet">Joliet</option>
-              <option value="Kaichi">Kaichi</option>
-              <option value="Korntal-Münchingen">Korntal-Münchingen</option>
-              <option value="Lodz">Lodz</option>
-              <option value="Los Lunas">Los Lunas</option>
-              <option value="Memphis">Memphis</option>
-              <option value="Merida">Merida</option>
-              <option value="Meßkirch">Meßkirch</option>
-              <option value="Monterrey">Monterrey</option>
-              <option value="Mulgrave">Mulgrave</option>
-              <option value="Murcia">Murcia</option>
-              <option value="Nagpur">Nagpur</option>
-              <option value="Nanjing">Nanjing</option>
-              <option value="Northridge">Northridge</option>
-              <option value="Olyphant">Olyphant</option>
-              <option value="Orleans">Orleans</option>
-              <option value="Peterborough">Peterborough</option>
-              <option value="Rostock">Rostock</option>
-              <option value="Rugby">Rugby</option>
-              <option value="Salem">Salem</option>
-              <option value="Salt Lake City">Salt Lake City</option>
-              <option value="San Antonio">San Antonio</option>
-              <option value="San Salvo">San Salvo</option>
-              <option value="Schortens">Schortens</option>
-              <option value="Sevrey">Sevrey</option>
-              <option value="Stafford">Stafford</option>
-              <option value="Swansea">Swansea</option>
-              <option value="Tlaquepaque">Tlaquepaque</option>
-              <option value="Vercelli">Vercelli</option>
-              <option value="Warrington">Warrington</option>
-              <option value="Windsor">Windsor</option>
-              <option value="Barueri">Barueri</option>
-              <option value="Bayreuth">Bayreuth</option>
-              <option value="Birmingham">Birmingham</option>
-              <option value="Boves">Boves</option>
-              <option value="Calgary">Calgary</option>
-              <option value="Camerano">Camerano</option>
-              <option value="Casirate d'Adda">Casirate d'Adda</option>
-              <option value="Chesterfield">Chesterfield</option>
-              <option value="Cividate al Piano">Cividate al Piano</option>
-              <option value="Colorado Springs">Colorado Springs</option>
-              <option value="Commerce City">Commerce City</option>
-              <option value="Coppell">Coppell</option>
-              <option value="Dartford">Dartford</option>
-              <option value="Daventry">Daventry</option>
-              <option value="Euclid">Euclid</option>
-              <option value="Fara in Sabina">Fara in Sabina</option>
-              <option value="Fayetteville">Fayetteville</option>
-              <option value="Fujiidera">Fujiidera</option>
-              <option value="Garner">Garner</option>
-              <option value="Gliwice">Gliwice</option>
-              <option value="Greencastle">Greencastle</option>
-              <option value="Hoppegarten">Hoppegarten</option>
-              <option value="Huesca">Huesca</option>
-              <option value="Indianapolis">Indianapolis</option>
-              <option value="Jaipur">Jaipur</option>
-              <option value="Katrineholm">Katrineholm</option>
-              <option value="Knüllwald">Knüllwald</option>
-              <option value="Lexington">Lexington</option>
-              <option value="Longvic">Longvic</option>
-              <option value="Magdeburg">Magdeburg</option>
-              <option value="Mayfield Village">Mayfield Village</option>
-              <option value="Mesa">Mesa</option>
-              <option value="Milton Keynes">Milton Keynes</option>
-              <option value="Mt Juliet">Mt Juliet</option>
-              <option value="Nantes">Nantes</option>
-              <option value="Noisy-le-Grand">Noisy-le-Grand</option>
-              <option value="Oak Creek">Oak Creek</option>
-              <option value="Oerlenbach">Oerlenbach</option>
-              <option value="Oldenburg (Oldb.)">Oldenburg (Oldb.)</option>
-              <option value="Pabianice">Pabianice</option>
-              <option value="Perth">Perth</option>
-              <option value="Petersburg">Petersburg</option>
-              <option value="Puebla">Puebla</option>
-              <option value="Quincy">Quincy</option>
-              <option value="Robbinsville">Robbinsville</option>
-              <option value="San Bernardino">San Bernardino</option>
-              <option value="Santa Barbara">Santa Barbara</option>
-              <option value="Schkeuditz">Schkeuditz</option>
-              <option value="Somerset">Somerset</option>
-              <option value="Stockton-on-Tees">Stockton-on-Tees</option>
-              <option value="Surat">Surat</option>
-              <option value="Sutton Coldfield">Sutton Coldfield</option>
-              <option value="Szczecin">Szczecin</option>
-              <option value="Tampa">Tampa</option>
-              <option value="Temple Terrace">Temple Terrace</option>
-              <option value="Thornton">Thornton</option>
-              <option value="Torrazza Piemonte">Torrazza Piemonte</option>
-              <option value="Warrenton">Warrenton</option>
-              <option value="Weston">Weston</option>
-              <option value="Wilhelmshaven">Wilhelmshaven</option>
-              <option value="Wuppertal">Wuppertal</option>
-              <option value="Akron">Akron</option>
-              <option value="Anekal Sub-District">Anekal Sub-District</option>
-              <option value="Antwerp">Antwerp</option>
-              <option value="Appling">Appling</option>
-              <option value="Ashland">Ashland</option>
-              <option value="Avenel">Avenel</option>
-              <option value="Belfast">Belfast</option>
-              <option value="Bessemer">Bessemer</option>
-              <option value="Bolton">Bolton</option>
-              <option value="Bondurant">Bondurant</option>
-              <option value="Boulder">Boulder</option>
-              <option value="Brandenburg an der Havel">Brandenburg an der Havel</option>
-              <option value="Briec">Briec</option>
-              <option value="Calenzano">Calenzano</option>
-              <option value="Cancún">Cancún</option>
-              <option value="Cardiff">Cardiff</option>
-              <option value="Carros">Carros</option>
-              <option value="Castleton-on-Hudson">Castleton-on-Hudson</option>
-              <option value="Chattanooga">Chattanooga</option>
-              <option value="Chesapeake">Chesapeake</option>
-              <option value="Chino">Chino</option>
-              <option value="Cuautitlán Izcalli">Cuautitlán Izcalli</option>
-              <option value="Duisburg">Duisburg</option>
-              <option value="Dupont">Dupont</option>
-              <option value="East Syracuse">East Syracuse</option>
-              <option value="Englewood">Englewood</option>
-              <option value="Fall River">Fall River</option>
-              <option value="Fiume Veneto">Fiume Veneto</option>
-              <option value="Fontaine">Fontaine</option>
-              <option value="Freiburg">Freiburg</option>
-              <option value="Glendale">Glendale</option>
-              <option value="Grand Island">Grand Island</option>
-              <option value="Hamilton">Hamilton</option>
-              <option value="Hazleton">Hazleton</option>
-              <option value="Hebron">Hebron</option>
-              <option value="Hermosillo">Hermosillo</option>
-              <option value="Higashiosaka">Higashiosaka</option>
-              <option value="Hinckley">Hinckley</option>
-              <option value="Indore">Indore</option>
-              <option value="Jacksonville">Jacksonville</option>
-              <option value="Jeffersonville">Jeffersonville</option>
-              <option value="Jessup">Jessup</option>
-              <option value="Johannesburg">Johannesburg</option>
-              <option value="Kuki-Shi">Kuki-Shi</option>
-              <option value="Kumamoto">Kumamoto</option>
-              <option value="Leduc County">Leduc County</option>
-              <option value="Lengede">Lengede</option>
-              <option value="Liberty">Liberty</option>
-              <option value="Longueuil">Longueuil</option>
-              <option value="Los Gatos">Los Gatos</option>
-              <option value="Mannheim">Mannheim</option>
-              <option value="Mollet del Vallès">Mollet del Vallès</option>
-              <option value="Monee">Monee</option>
-              <option value="Monroe">Monroe</option>
-              <option value="Murfreesboro">Murfreesboro</option>
-              <option value="Neuenburg am Rhein">Neuenburg am Rhein</option>
-              <option value="New Castle">New Castle</option>
-              <option value="Nittenau">Nittenau</option>
-              <option value="North Las Vegas">North Las Vegas</option>
-              <option value="Northborough">Northborough</option>
-              <option value="Nützen">Nützen</option>
-              <option value="Oberkrämer">Oberkrämer</option>
-              <option value="Omaha">Omaha</option>
-              <option value="Onda">Onda</option>
-              <option value="Origgio">Origgio</option>
-              <option value="Ormes">Ormes</option>
-              <option value="Parkland County">Parkland County</option>
-              <option value="Parma">Parma</option>
-              <option value="Pommersfelden">Pommersfelden</option>
-              <option value="Pontiac">Pontiac</option>
-              <option value="Poznan">Poznan</option>
-              <option value="Reno">Reno</option>
-              <option value="Rockford">Rockford</option>
-              <option value="Rossford">Rossford</option>
-              <option value="Saint-Denis">Saint-Denis</option>
-              <option value="Saltillo">Saltillo</option>
-              <option value="Santa Cruz">Santa Cruz</option>
-              <option value="Sindelfingen">Sindelfingen</option>
-              <option value="South San Francisco">South San Francisco</option>
-              <option value="Spanaway">Spanaway</option>
-              <option value="Straubing">Straubing</option>
-              <option value="Taguig City">Taguig City</option>
-              <option value="The Hague">The Hague</option>
-              <option value="Tianjin">Tianjin</option>
-              <option value="Tulsa">Tulsa</option>
-              <option value="Ulm">Ulm</option>
-              <option value="University Park">University Park</option>
-              <option value="Unna">Unna</option>
-              <option value="Victoria">Victoria</option>
-              <option value="Vienna">Vienna</option>
-              <option value="Waukegan">Waukegan</option>
-              <option value="Woippy">Woippy</option>
-              <option value="Wunstorf">Wunstorf</option>
-              <option value="Yokohama">Yokohama</option>
-              <option value="Ahsa">Ahsa</option>
-              <option value="Annecy">Annecy</option>
-              <option value="Barberà del Vallès">Barberà del Vallès</option>
-              <option value="Beaumont">Beaumont</option>
-              <option value="Beloit">Beloit</option>
-              <option value="Berkeley">Berkeley</option>
-              <option value="Bispingen">Bispingen</option>
-              <option value="Bochum">Bochum</option>
-              <option value="Bordeaux">Bordeaux</option>
-              <option value="Borgstedt">Borgstedt</option>
-              <option value="Brampton">Brampton</option>
-              <option value="Brooklyn">Brooklyn</option>
-              <option value="Brooklyn Park">Brooklyn Park</option>
-              <option value="Buccinasco">Buccinasco</option>
-              <option value="Caledonia">Caledonia</option>
-              <option value="Calle Blancos">Calle Blancos</option>
-              <option value="Canberra">Canberra</option>
-              <option value="Chhatrapati Sambhaji Nagar">Chhatrapati Sambhaji Nagar</option>
-              <option value="Cleveland">Cleveland</option>
-              <option value="Coimbatore">Coimbatore</option>
-              <option value="Copenhagen">Copenhagen</option>
-              <option value="Costa di Mezzate">Costa di Mezzate</option>
-              <option value="Coteau-du-Lac">Coteau-du-Lac</option>
-              <option value="Culiacan">Culiacan</option>
-              <option value="Daito">Daito</option>
-              <option value="Delta">Delta</option>
-              <option value="Dummerstorf">Dummerstorf</option>
-              <option value="East Bolton">East Bolton</option>
-              <option value="El Paso">El Paso</option>
-              <option value="Enfield">Enfield</option>
-              <option value="Faridabad">Faridabad</option>
-              <option value="Fishersville">Fishersville</option>
-              <option value="Fishkill">Fishkill</option>
-              <option value="Getafe">Getafe</option>
-              <option value="Greece">Greece</option>
-              <option value="Greenfield">Greenfield</option>
-              <option value="Großebersdorf">Großebersdorf</option>
-              <option value="Guwahati">Guwahati</option>
-              <option value="Göttingen">Göttingen</option>
-              <option value="Hamme">Hamme</option>
-              <option value="Hazel Park">Hazel Park</option>
-              <option value="Henderson">Henderson</option>
-              <option value="Hillsboro">Hillsboro</option>
-              <option value="Hooksett">Hooksett</option>
-              <option value="Jamalpur">Jamalpur</option>
-              <option value="Jefferson">Jefferson</option>
-              <option value="Johnstown">Johnstown</option>
-              <option value="Kabelsketal">Kabelsketal</option>
-              <option value="Krefeld">Krefeld</option>
-              <option value="Langfang">Langfang</option>
-              <option value="Laurel">Laurel</option>
-              <option value="Lewisberry">Lewisberry</option>
-              <option value="Lille">Lille</option>
-              <option value="Long Beach">Long Beach</option>
-              <option value="Lunenburg">Lunenburg</option>
-              <option value="Maidstone">Maidstone</option>
-              <option value="Makkah">Makkah</option>
-              <option value="Manesar">Manesar</option>
-              <option value="Maple Grove">Maple Grove</option>
-              <option value="Marseille">Marseille</option>
-              <option value="Matteson">Matteson</option>
-              <option value="Morlaàs">Morlaàs</option>
-              <option value="Naples">Naples</option>
-              <option value="Oakley">Oakley</option>
-              <option value="Opa-Locka">Opa-Locka</option>
-              <option value="Orlando">Orlando</option>
-              <option value="Orly">Orly</option>
-              <option value="Park City">Park City</option>
-              <option value="Penns Grove">Penns Grove</option>
-              <option value="Princeton">Princeton</option>
-              <option value="Qingdao">Qingdao</option>
-              <option value="Redlands">Redlands</option>
-              <option value="Romulus">Romulus</option>
-              <option value="Rotenburg (Wümme)">Rotenburg (Wümme)</option>
-              <option value="Rozenburg">Rozenburg</option>
-              <option value="Saint-Étienne-du-Rouvray">Saint-Étienne-du-Rouvray</option>
-              <option value="Santiago de Querétaro">Santiago de Querétaro</option>
-              <option value="Sapporo">Sapporo</option>
-              <option value="Schwerin">Schwerin</option>
-              <option value="Shafter">Shafter</option>
-              <option value="Southampton">Southampton</option>
-              <option value="St Helens">St Helens</option>
-              <option value="Tampere">Tampere</option>
-              <option value="Tarragona">Tarragona</option>
-              <option value="Tijuana">Tijuana</option>
-              <option value="Toulouse">Toulouse</option>
-              <option value="Trierweiler">Trierweiler</option>
-              <option value="Troisdorf">Troisdorf</option>
-              <option value="Troutdale">Troutdale</option>
-              <option value="Turin">Turin</option>
-              <option value="Varennes">Varennes</option>
-              <option value="Visakhapatnam">Visakhapatnam</option>
-              <option value="Vélizy-Villacoublay">Vélizy-Villacoublay</option>
-              <option value="Völklingen">Völklingen</option>
-              <option value="Weiterstadt">Weiterstadt</option>
-              <option value="West Jefferson">West Jefferson</option>
-              <option value="Wolfhagen">Wolfhagen</option>
-              <option value="Yamato-Shi">Yamato-Shi</option>
-              <option value="Zhengzhou">Zhengzhou</option>
-              <option value="Bakersfield">Bakersfield</option>
-              <option value="Bedford">Bedford</option>
-              <option value="Belvedere">Belvedere</option>
-              <option value="Bonneuil-sur-Marne">Bonneuil-sur-Marne</option>
-              <option value="Bridgend">Bridgend</option>
-              <option value="Bronx">Bronx</option>
-              <option value="Brookshire">Brookshire</option>
-              <option value="Brownstown">Brownstown</option>
-              <option value="Burago di Molgora">Burago di Molgora</option>
-              <option value="Burlington">Burlington</option>
-              <option value="Calderara di Reno">Calderara di Reno</option>
-              <option value="Campbellsville">Campbellsville</option>
-              <option value="Carlisle">Carlisle</option>
-              <option value="Central Point">Central Point</option>
-              <option value="Charlton">Charlton</option>
-              <option value="Cincinnati">Cincinnati</option>
-              <option value="Cohoes">Cohoes</option>
-              <option value="Colleferro">Colleferro</option>
-              <option value="Craigavon">Craigavon</option>
-              <option value="Crest Hill">Crest Hill</option>
-              <option value="DFW Airport">DFW Airport</option>
-              <option value="Dale">Dale</option>
-              <option value="Dammam">Dammam</option>
-              <option value="Del Mar">Del Mar</option>
-              <option value="Deltona">Deltona</option>
-              <option value="Dormagen">Dormagen</option>
-              <option value="Dos Hermanas">Dos Hermanas</option>
-              <option value="Durrat Al Bahrain">Durrat Al Bahrain</option>
-              <option value="Edwardsville">Edwardsville</option>
-              <option value="El Salto">El Salto</option>
-              <option value="El Segundo">El Segundo</option>
-              <option value="Euskirchen">Euskirchen</option>
-              <option value="Evansville">Evansville</option>
-              <option value="Fontana">Fontana</option>
-              <option value="Forest Hill">Forest Hill</option>
-              <option value="Fort Lauderdale">Fort Lauderdale</option>
-              <option value="Friedrichsdorf">Friedrichsdorf</option>
-              <option value="Gardner">Gardner</option>
-              <option value="Geneva">Geneva</option>
-              <option value="Ghaziabad">Ghaziabad</option>
-              <option value="Glasgow">Glasgow</option>
-              <option value="Gouldsboro">Gouldsboro</option>
-              <option value="Grays">Grays</option>
-              <option value="Grugliasco">Grugliasco</option>
-              <option value="Hampton">Hampton</option>
-              <option value="Harlow">Harlow</option>
-              <option value="Harrisburg">Harrisburg</option>
-              <option value="Havant">Havant</option>
-              <option value="Ho Chi Minh">Ho Chi Minh</option>
-              <option value="Holbrook">Holbrook</option>
-              <option value="Horn Lake">Horn Lake</option>
-              <option value="Jericho">Jericho</option>
-              <option value="Joto-Ku">Joto-Ku</option>
-              <option value="Jupiter">Jupiter</option>
-              <option value="Kakinada">Kakinada</option>
-              <option value="Klagenfurt">Klagenfurt</option>
-              <option value="Knottingley">Knottingley</option>
-              <option value="Lake Grove">Lake Grove</option>
-              <option value="Lakeville">Lakeville</option>
-              <option value="Lampertswalde">Lampertswalde</option>
-              <option value="Lancaster">Lancaster</option>
-              <option value="Lenexa">Lenexa</option>
-              <option value="Lisbon">Lisbon</option>
-              <option value="Logan">Logan</option>
-              <option value="Madinah">Madinah</option>
-              <option value="Madison">Madison</option>
-              <option value="Medellin">Medellin</option>
-              <option value="Middletown">Middletown</option>
-              <option value="Milpitas">Milpitas</option>
-              <option value="Montélimar">Montélimar</option>
-              <option value="Moosburg">Moosburg</option>
-              <option value="Moreno Valley">Moreno Valley</option>
-              <option value="Moult-Chicheboville">Moult-Chicheboville</option>
-              <option value="Neubrandenburg">Neubrandenburg</option>
-              <option value="Newcastle">Newcastle</option>
-              <option value="North Randall">North Randall</option>
-              <option value="Oostrum">Oostrum</option>
-              <option value="Orange">Orange</option>
-              <option value="Padua">Padua</option>
-              <option value="Paramus">Paramus</option>
-              <option value="Patna">Patna</option>
-              <option value="Pennsylvania Furnace">Pennsylvania Furnace</option>
-              <option value="Pewaukee">Pewaukee</option>
-              <option value="Pisa">Pisa</option>
-              <option value="Pittston">Pittston</option>
-              <option value="Plymouth">Plymouth</option>
-              <option value="Quebec City">Quebec City</option>
-              <option value="Ramstein-Miesenbach">Ramstein-Miesenbach</option>
-              <option value="Ravenhall">Ravenhall</option>
-              <option value="Republic">Republic</option>
-              <option value="Riese Pio X">Riese Pio X</option>
-              <option value="Rio de Janeiro">Rio de Janeiro</option>
-              <option value="Rocky View County">Rocky View County</option>
-              <option value="Ruskin">Ruskin</option>
-              <option value="San Luis Potosi">San Luis Potosi</option>
-              <option value="Santa Clarita">Santa Clarita</option>
-              <option value="Sauget">Sauget</option>
-              <option value="Sereď">Sereď</option>
-              <option value="Shawnee">Shawnee</option>
-              <option value="Shippensburg">Shippensburg</option>
-              <option value="Slough">Slough</option>
-              <option value="South Bend">South Bend</option>
-              <option value="Spokane">Spokane</option>
-              <option value="Springdale">Springdale</option>
-              <option value="Springfield">Springfield</option>
-              <option value="Strasbourg">Strasbourg</option>
-              <option value="Stuttgart">Stuttgart</option>
-              <option value="Summerville">Summerville</option>
-              <option value="Tallahassee">Tallahassee</option>
-              <option value="Taunton">Taunton</option>
-              <option value="Teterboro">Teterboro</option>
-              <option value="Toluca">Toluca</option>
-              <option value="Torrance">Torrance</option>
-              <option value="Toyokawa-Shi">Toyokawa-Shi</option>
-              <option value="Trento">Trento</option>
-              <option value="Tsu-Shi">Tsu-Shi</option>
-              <option value="Tucson">Tucson</option>
-              <option value="Union">Union</option>
-              <option value="Uxbridge">Uxbridge</option>
-              <option value="Valladolid">Valladolid</option>
-              <option value="Valley View">Valley View</option>
-              <option value="Venice">Venice</option>
-              <option value="Villeneuve-lès-Bouloc">Villeneuve-lès-Bouloc</option>
-              <option value="Visalia">Visalia</option>
-              <option value="Weifang">Weifang</option>
-              <option value="Wenden">Wenden</option>
-              <option value="West Deptford">West Deptford</option>
-              <option value="West Jordan">West Jordan</option>
-              <option value="West New York">West New York</option>
-              <option value="Whitestown">Whitestown</option>
-              <option value="Winnipeg">Winnipeg</option>
-              <option value="Yachiyo">Yachiyo</option>
-              <option value="10th of Ramadan">10th of Ramadan</option>
-              <option value="Aberdeen">Aberdeen</option>
-              <option value="Abha">Abha</option>
-              <option value="Adelaide">Adelaide</option>
-              <option value="Agra">Agra</option>
-              <option value="Airdrie">Airdrie</option>
-              <option value="Ajax">Ajax</option>
-              <option value="Albany">Albany</option>
-              <option value="Alberta">Alberta</option>
-              <option value="Alcalá de Henares">Alcalá de Henares</option>
-              <option value="Alicante">Alicante</option>
-              <option value="Allentown">Allentown</option>
-              <option value="Amarillo">Amarillo</option>
-              <option value="Antioch">Antioch</option>
-              <option value="Ardea">Ardea</option>
-              <option value="Arlington Heights">Arlington Heights</option>
-              <option value="Arzano">Arzano</option>
-              <option value="Asti">Asti</option>
-              <option value="Athens">Athens</option>
-              <option value="Avion">Avion</option>
-              <option value="Bagalkot">Bagalkot</option>
-              <option value="Basalt">Basalt</option>
-              <option value="Bellingham">Bellingham</option>
-              <option value="Belém">Belém</option>
-              <option value="Bensalem">Bensalem</option>
-              <option value="Bethel">Bethel</option>
-              <option value="Bethpage">Bethpage</option>
-              <option value="Betim">Betim</option>
-              <option value="Bhiwandi">Bhiwandi</option>
-              <option value="Bitonto">Bitonto</option>
-              <option value="Blythewood">Blythewood</option>
-              <option value="Bonn">Bonn</option>
-              <option value="Bournemouth">Bournemouth</option>
-              <option value="Bradford">Bradford</option>
-              <option value="Bramsche">Bramsche</option>
-              <option value="Brasilia">Brasilia</option>
-              <option value="Bridgewater">Bridgewater</option>
-              <option value="Broomall">Broomall</option>
-              <option value="Brunswick">Brunswick</option>
-              <option value="Buena Park">Buena Park</option>
-              <option value="Buffalo">Buffalo</option>
-              <option value="Cagliari">Cagliari</option>
-              <option value="Calais">Calais</option>
-              <option value="Carlstadt">Carlstadt</option>
-              <option value="Carrollton">Carrollton</option>
-              <option value="Cassel">Cassel</option>
-              <option value="Castegnato">Castegnato</option>
-              <option value="Cavan">Cavan</option>
-              <option value="Champaign">Champaign</option>
-              <option value="Chandigarh">Chandigarh</option>
-              <option value="Channahon">Channahon</option>
-              <option value="Charleston">Charleston</option>
-              <option value="Chester">Chester</option>
-              <option value="Chevy Chase">Chevy Chase</option>
-              <option value="Chihuahua">Chihuahua</option>
-              <option value="Clear Brook">Clear Brook</option>
-              <option value="Colombia">Colombia</option>
-              <option value="Concord">Concord</option>
-              <option value="Coslada">Coslada</option>
-              <option value="Cracow">Cracow</option>
-              <option value="Cranbury">Cranbury</option>
-              <option value="Dalyenong">Dalyenong</option>
-              <option value="Daytona Beach">Daytona Beach</option>
-              <option value="Derby">Derby</option>
-              <option value="Didcot">Didcot</option>
-              <option value="Dijon">Dijon</option>
-              <option value="Doral">Doral</option>
-              <option value="Eagan">Eagan</option>
-              <option value="Eatontown">Eatontown</option>
-              <option value="Edgerton">Edgerton</option>
-              <option value="Edmonton">Edmonton</option>
-              <option value="Emiliano Zapata">Emiliano Zapata</option>
-              <option value="Etna">Etna</option>
-              <option value="Fernbrook">Fernbrook</option>
-              <option value="Fife">Fife</option>
-              <option value="Flörsheim am Main">Flörsheim am Main</option>
-              <option value="Fort Myers">Fort Myers</option>
-              <option value="Fresno">Fresno</option>
-              <option value="Fukuroi-Shi">Fukuroi-Shi</option>
-              <option value="Gainesville">Gainesville</option>
-              <option value="Gallicano nel Lazio">Gallicano nel Lazio</option>
-              <option value="Garching bei München">Garching bei München</option>
-              <option value="Gauchy">Gauchy</option>
-              <option value="General Escobedo">General Escobedo</option>
-              <option value="Germantown">Germantown</option>
-              <option value="Gersthofen">Gersthofen</option>
-              <option value="Gidy">Gidy</option>
-              <option value="Glen Burnie">Glen Burnie</option>
-              <option value="Gold Coast">Gold Coast</option>
-              <option value="Goyang">Goyang</option>
-              <option value="Grand Rapids">Grand Rapids</option>
-              <option value="Granite City">Granite City</option>
-              <option value="Gütersloh">Gütersloh</option>
-              <option value="Hadley">Hadley</option>
-              <option value="Halifax">Halifax</option>
-              <option value="Hanahan">Hanahan</option>
-              <option value="Hartford">Hartford</option>
-              <option value="Haverhill">Haverhill</option>
-              <option value="Hayes">Hayes</option>
-              <option value="Haymarket">Haymarket</option>
-              <option value="Hazelwood">Hazelwood</option>
-              <option value="Helsinki">Helsinki</option>
-              <option value="Holyoke">Holyoke</option>
-              <option value="Honolulu">Honolulu</option>
-              <option value="Huntington Beach">Huntington Beach</option>
-              <option value="Huntley">Huntley</option>
-              <option value="Hyattsville">Hyattsville</option>
-              <option value="Itaitinga">Itaitinga</option>
-              <option value="Jundiaí">Jundiaí</option>
-              <option value="Kagoshima">Kagoshima</option>
-              <option value="Katowice">Katowice</option>
-              <option value="Kearny">Kearny</option>
-              <option value="Knoxville">Knoxville</option>
-              <option value="Kochi">Kochi</option>
-              <option value="Kunshan">Kunshan</option>
-              <option value="Kurnool">Kurnool</option>
-              <option value="Kuwait City">Kuwait City</option>
-              <option value="La Crosse">La Crosse</option>
-              <option value="La Verrière">La Verrière</option>
-              <option value="Lakeland">Lakeland</option>
-              <option value="Lakewood">Lakewood</option>
-              <option value="Lehi">Lehi</option>
-              <option value="Leicester">Leicester</option>
-              <option value="Linden">Linden</option>
-              <option value="Lithia Springs">Lithia Springs</option>
-              <option value="Littlehampton">Littlehampton</option>
-              <option value="Livonia">Livonia</option>
-              <option value="Louisa">Louisa</option>
-              <option value="Ludhiana">Ludhiana</option>
-              <option value="Manaus">Manaus</option>
-              <option value="Manteca">Manteca</option>
-              <option value="Markham">Markham</option>
-              <option value="Maspeth">Maspeth</option>
-              <option value="McKinney">McKinney</option>
-              <option value="Mebane">Mebane</option>
-              <option value="Medford">Medford</option>
-              <option value="Meerut">Meerut</option>
-              <option value="Metz">Metz</option>
-              <option value="Mi Perú">Mi Perú</option>
-              <option value="Milford">Milford</option>
-              <option value="Mill Creek">Mill Creek</option>
-              <option value="Mississauga">Mississauga</option>
-              <option value="Montcada i Reixac">Montcada i Reixac</option>
-              <option value="Morton Grove">Morton Grove</option>
-              <option value="Moses Lake">Moses Lake</option>
-              <option value="Muras">Muras</option>
-              <option value="Málaga">Málaga</option>
-              <option value="Nampa">Nampa</option>
-              <option value="Neuwied">Neuwied</option>
-              <option value="New Century">New Century</option>
-              <option value="New Westminster">New Westminster</option>
-              <option value="Nomi">Nomi</option>
-              <option value="Norfolk">Norfolk</option>
-              <option value="Norristown">Norristown</option>
-              <option value="North East">North East</option>
-              <option value="North Haven">North Haven</option>
-              <option value="North Jackson">North Jackson</option>
-              <option value="Northampton">Northampton</option>
-              <option value="Norwood">Norwood</option>
-              <option value="Nottingham">Nottingham</option>
-              <option value="Nuremberg">Nuremberg</option>
-              <option value="O Porriño">O Porriño</option>
-              <option value="Ocala">Ocala</option>
-              <option value="Okinawa-Shi">Okinawa-Shi</option>
-              <option value="Olathe">Olathe</option>
-              <option value="Olive Branch">Olive Branch</option>
-              <option value="Oslo">Oslo</option>
-              <option value="Osnabrück">Osnabrück</option>
-              <option value="Oxnard">Oxnard</option>
-              <option value="Palmdale">Palmdale</option>
-              <option value="Papenburg">Papenburg</option>
-              <option value="Patterson">Patterson</option>
-              <option value="Pendleton">Pendleton</option>
-              <option value="Perranporth">Perranporth</option>
-              <option value="Perris">Perris</option>
-              <option value="Pflugerville">Pflugerville</option>
-              <option value="Philadelphia">Philadelphia</option>
-              <option value="Pioltello">Pioltello</option>
-              <option value="Pointe-Claire">Pointe-Claire</option>
-              <option value="Port Allen">Port Allen</option>
-              <option value="Poway">Poway</option>
-              <option value="Preston">Preston</option>
-              <option value="Prince George">Prince George</option>
-              <option value="Providence">Providence</option>
-              <option value="Rabat">Rabat</option>
-              <option value="Raunheim">Raunheim</option>
-              <option value="Recife">Recife</option>
-              <option value="Reggio nell'Emilia">Reggio nell'Emilia</option>
-              <option value="Reston">Reston</option>
-              <option value="Revere">Revere</option>
-              <option value="Riverside">Riverside</option>
-              <option value="Rivesaltes">Rivesaltes</option>
-              <option value="Romeoville">Romeoville</option>
-              <option value="Roseville">Roseville</option>
-              <option value="Rubí">Rubí</option>
-              <option value="Rutherford">Rutherford</option>
-              <option value="San Andrés Cholula">San Andrés Cholula</option>
-              <option value="San Juan">San Juan</option>
-              <option value="San Luis Obispo">San Luis Obispo</option>
-              <option value="San Marcos">San Marcos</option>
-              <option value="San Mateo">San Mateo</option>
-              <option value="Santa Catarina">Santa Catarina</option>
-              <option value="Santarcangelo di Romagna">Santarcangelo di Romagna</option>
-              <option value="Savannah">Savannah</option>
-              <option value="Scugog">Scugog</option>
-              <option value="Secunderabad">Secunderabad</option>
-              <option value="Sewickley">Sewickley</option>
-              <option value="Shirley">Shirley</option>
-              <option value="Signes">Signes</option>
-              <option value="Skokie">Skokie</option>
-              <option value="Smithfield">Smithfield</option>
-              <option value="Spring">Spring</option>
-              <option value="St Austell">St Austell</option>
-              <option value="St Peters">St Peters</option>
-              <option value="St Thomas">St Thomas</option>
-              <option value="Sterling Heights">Sterling Heights</option>
-              <option value="Stoke-on-Trent">Stoke-on-Trent</option>
-              <option value="Stone">Stone</option>
-              <option value="Stone Mountain">Stone Mountain</option>
-              <option value="Stratford">Stratford</option>
-              <option value="Sturtevant">Sturtevant</option>
-              <option value="Survilliers">Survilliers</option>
-              <option value="Suzhou">Suzhou</option>
-              <option value="Swedesboro">Swedesboro</option>
-              <option value="Syosset">Syosset</option>
-              <option value="Syracuse">Syracuse</option>
-              <option value="São João de Meriti">São João de Meriti</option>
-              <option value="Takatsuki">Takatsuki</option>
-              <option value="Tallinn">Tallinn</option>
-              <option value="Thiruvananthapuram">Thiruvananthapuram</option>
-              <option value="Timisoara">Timisoara</option>
-              <option value="Toledo">Toledo</option>
-              <option value="Tolleson">Tolleson</option>
-              <option value="Toyama">Toyama</option>
-              <option value="Tsukuba-Shi">Tsukuba-Shi</option>
-              <option value="Tultitlán">Tultitlán</option>
-              <option value="Turlock">Turlock</option>
-              <option value="Twinsburg">Twinsburg</option>
-              <option value="Tübingen">Tübingen</option>
-              <option value="Udine">Udine</option>
-              <option value="Vadodara">Vadodara</option>
-              <option value="Vapi">Vapi</option>
-              <option value="Varanasi">Varanasi</option>
-              <option value="Verona">Verona</option>
-              <option value="Vicenza">Vicenza</option>
-              <option value="Vijayawada">Vijayawada</option>
-              <option value="Villahermosa">Villahermosa</option>
-              <option value="Villeneuve-la-Garenne">Villeneuve-la-Garenne</option>
-              <option value="Walker">Walker</option>
-              <option value="Walldorf">Walldorf</option>
-              <option value="Wallingford">Wallingford</option>
-              <option value="West Lafayette">West Lafayette</option>
-              <option value="West Palm Beach">West Palm Beach</option>
-              <option value="West Sacramento">West Sacramento</option>
-              <option value="Whitby">Whitby</option>
-              <option value="Wolfsburg">Wolfsburg</option>
-              <option value="Worms">Worms</option>
-              <option value="Wuhan">Wuhan</option>
-              <option value="Yongin">Yongin</option>
-            </select>
-
-          </div>
-          <div id="alerts_grid">
-            <h4>ALERT SETTINGS</h4>
-          </div>
-          <div id="alert_frequency_grid">
-            <select id="alert_frequency" data-trigger class="form-control" required>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-          </div>
-          <div id="youremail_grid">
-            <input type="email" id="youremail" class="form-control" required />
-
-          </div>
-          <div id="lang_code_grid">
-            <select id="lang_code" data-trigger class="form-control" required>
-              <option value="cs">Čeština</option>
-              <option value="de">Deutsch</option>
-              <option value="en" selected="true">English (U.S.)</option>
-              <option value="en-gb">English (U.K.)</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
-              <option value="it">Italiano</option>
-              <option value="jp">日本語</option>
-              <option value="pl">Polski</option>
-              <option value="pt">Português (Brasil)</option>
-              <option value="zh">简体中文</option>
-            </select>
-          </div>
-          <div id="reset_button_grid">
-            <button type="reset" class="btn-delete">Reset</button>
-          </div>
-          <div id="submit_button_grid">
-            <button type="submit" class="btn-submit">GENERATE ALERT TEMPLATE</button>
-          </div>
+<body>
+  <div class="container">
+    <div class="header_grid">
+      <h1 id="alerts_title_top">Alert Template Generator</h1>
+      <h2 id="alerts_sub_top"><a href="https://github.com/psuedomagi/Amazon_Job_Alertbot">Amazon
+          Job Alertbot</a></h2>
+    </div>
+    <form>
+    <div class="section-search">
+      <span class="tooltip">
+        <p>
+          <strong>supports:</strong> booleans in CAPS (OR, AND, NOT) <strong>|</strong> grouping in
+          parentheses <strong>|</strong> quotes for exact terms <br />
+          <strong>example: (("Solutions Architect" OR Consultant) AND Seattle) NOT ProServe</strong>
+        </p>
+      </span>
+      <input class="form-control" type="text" id="search-bar" />
+    </div>
+    <div class="section">
+      <div id="filter-grid">
+        <div id="filters_grid">
+          <h3>SEARCH FILTERS</h3>
+        </div>
+        <div id="characteristics_grid">
+          <h4>JOB CHARACTERISTICS</h4>
+        </div>
+        <div id="business_category_grid">
+          <select data-trigger data-additions='false' id="business_category" class="form-control"
+            multiple>
+            <option placeholder="" value="">TEAM</option>
+            <option value="advertising">Amazon Ads</option>
+            <option value="amazon-customer-service">Amazon Customer Service</option>
+            <option value="amazon-web-services">Amazon Web Services</option>
+            <option value="business-corporate-development">Business & Corporate Development</option>
+            <option value="ecommerce-platform">eCommerce Foundation</option>
+            <option value="fulfillment-operations">Amazon Operations</option>
+            <option value="retail">Amazon Retail</option>
+            <option value="seller-services">Marketplace</option>
+            <option value="subsidiaries">Subsidiaries</option>
+            <option value="amazongo">Amazon Go</option>
+            <option value="kindle-content">Kindle Content</option>
+            <option value="finance">Finance and Global Business Services</option>
+            <option value="transport">Amazon Transportation Services</option>
+            <option value="operations-technology">Operations Technology</option>
+            <option value="humanresources">Human Resources</option>
+            <option value="legal-team">Legal</option>
+            <option value="student-programs">Student Programs</option>
+            <option value="consumer-payments">Amazon Payments</option>
+            <option value="consumerengagement">Shopping</option>
+            <option value="amazonfresh">Amazon Fresh</option>
+            <option value="customer-experience-business-trends">Customer Experience and Business
+              Trends</option>
+            <option value="amazonian-experience-and-technology">Amazonian Experience and Technology
+            </option>
+            <option value="amazon-entertainment">Amazon Entertainment</option>
+            <option value="selling-partner-services">Selling Partner Services</option>
+            <option value="gca">Global Communications and Community Impact</option>
+            <option value="cross-channel-cross-category-marketing">XCM (Cross-Channel,
+              Cross-Category Marketing)</option>
+            <option value="HSST">Amazon Health Services</option>
+            <option value="amazon-business">Amazon Business</option>
+            <option value="amazon-security">Amazon Security</option>
+            <option value="alexa-and-amazon-devices">Alexa and Amazon Devices</option>
+          </select>
+        </div>
+        <div id="category_grid">
+          <select data-trigger data-additions="false" id="category" class="form-control" multiple>
+            <option placeholder="" value="">JOB CATEGORY</option>
+            <option value="software-development">Software Development</option>
+            <option value="administrative-support">Administrative Support</option>
+            <option value="audio-video-photography-production">Audio / Video / Photography
+              Production</option>
+            <option value="business-merchant-development">Business & Merchant Development</option>
+            <option value="business-intelligence">Business Intelligence</option>
+            <option value="buying-planning-instock-management">Buying, Planning, & Instock
+              Management</option>
+            <option value="customer-service">Customer Service</option>
+            <option value="database-administration">Database Administration</option>
+            <option value="design">Amazon Design</option>
+            <option value="economics">Economics</option>
+            <option value="editorial-writing-content-management">Editorial, Writing, & Content
+              Management</option>
+            <option value="facilities-maintenance-real-estate">Facilities, Maintenance, & Real
+              Estate</option>
+            <option value="finance-accounting">Finance and Global Business Services</option>
+            <option value="fulfillment-operations-management">Fulfillment & Operations Management
+            </option>
+            <option value="fulfillment-warehouse-associate">Fulfillment Associate</option>
+            <option value="hardware-development">Hardware Development</option>
+            <option value="human-resources">Human Resources</option>
+            <option value="investigation-loss-prevention">Investigation & Loss Prevention</option>
+            <option value="leadership-development-training">Leadership Development & Training
+            </option>
+            <option value="legal">Legal</option>
+            <option value="machine-learning-science">Machine Learning Science</option>
+            <option value="marketing-pr">Marketing</option>
+            <option value="medical-health-safety">Medical, Health, & Safety</option>
+            <option value="operations-it-support-engineering">Operations, IT, & Support Engineering
+            </option>
+            <option value="project-program-product-management-non-tech">Project/Program/Product
+              Management--Non-Tech</option>
+            <option value="project-program-product-management-technical">Project/Program/Product
+              Management--Technical</option>
+            <option value="research-science">Research Science</option>
+            <option value="sales-advertising-account-management">Sales, Advertising, & Account
+              Management</option>
+            <option value="solutions-architect">Solutions Architect</option>
+            <option value="supply-chain-transportation-management">Supply Chain/Transportation
+              Management</option>
+            <option value="systems-quality-security-engineering">Systems, Quality, & Security
+              Engineering</option>
+            <option value="public-policy">Public Policy</option>
+            <option value="data-science">Data Science</option>
+            <option value="public-relations">Public Relations & Communications</option>
+          </select>
+        </div>
+        <div id="category_type_grid">
+          <select data-trigger data-additions="false" id="category_type" class="form-control"
+            multiple>
+            <option placeholder="" value="">JOB TYPE</option>
+            <option value="Corporate">Corporate</option>
+            <option value="Fulfillment-center">Fulfillment Center</option>
+            <option value="Customer Service">Customer Service</option>
+            <option value="Work from Home">Remote</option>
+            <option value="studentprograms">Student Programs</option>
+          </select>
+        </div>
+        <div id="job_type_grid">
+          <select data-trigger data-additions="false" id="job_type" class="form-control" multiple>
+            <option placeholder="" value="">SCHEDULE</option>
+            <option value="Full-Time">Full-Time</option>
+            <option value="Part-Time">Part-Time</option>
+            <option value="Seasonal">Seasonal</option>
+          </select>
+        </div>
+        <div id="is_manager_grid">
+          <select data-trigger data-additions="false" id="is_manager" class="form-control">
+            <option placeholder="" value="">ROLE TYPE</option>
+            <option value="1">Manager</option>
+            <option value="0">Individual Contributor</option>
+          </select>
+        </div>
+        <div id="locations_grid">
+          <h4>LOCATION</h4>
+        </div>
+        <div id="country_grid">
+          <select class="form-control" id="country" data-trigger data-additions="true" multiple>
+            <option placeholder="" value="">COUNTRY/REGION</option>
+            <option value="USA">United States</option>
+            <option value="IND">India</option>
+            <option value="JPN">Japan</option>
+            <option value="DEU">Germany</option>
+            <option value="GBR">United Kingdom</option>
+            <option value="CHN">China</option>
+            <option value="MEX">Mexico</option>
+            <option value="ESP">Spain</option>
+            <option value="LUX">Luxembourg</option>
+            <option value="CAN">Canada</option>
+            <option value="AUS">Australia</option>
+            <option value="FRA">France</option>
+            <option value="IRL">Ireland</option>
+            <option value="BRA">Brazil</option>
+            <option value="ITA">Italy</option>
+            <option value="CRI">Costa Rica</option>
+            <option value="POL">Poland</option>
+            <option value="EGY">Egypt</option>
+            <option value="TWN">Taiwan</option>
+            <option value="SGP">Singapore</option>
+            <option value="SVK">Slovakia</option>
+            <option value="ARE">United Arab Emirates</option>
+            <option value="PHL">Philippines</option>
+            <option value="ZAF">South Africa</option>
+            <option value="KOR">Korea, Republic of</option>
+            <option value="ISR">Israel</option>
+            <option value="CZE">Czech Republic</option>
+            <option value="SAU">Saudi Arabia</option>
+            <option value="ROU">Romania</option>
+            <option value="TUR">Turkey</option>
+            <option value="NLD">Netherlands</option>
+            <option value="JOR">Jordan</option>
+            <option value="NZL">New Zealand</option>
+            <option value="SWE">Sweden</option>
+            <option value="AUT">Austria</option>
+            <option value="BEL">Belgium</option>
+            <option value="HKG">Hong Kong</option>
+            <option value="THA">Thailand</option>
+            <option value="VNM">Viet Nam</option>
+            <option value="HRV">Croatia</option>
+            <option value="CHE">Switzerland</option>
+            <option value="IDN">Indonesia</option>
+            <option value="COL">Colombia</option>
+            <option value="MYS">Malaysia</option>
+            <option value="KEN">Kenya</option>
+            <option value="CHL">Chile</option>
+            <option value="ARG">Argentina</option>
+            <option value="FIN">Finland</option>
+            <option value="DNK">Denmark</option>
+            <option value="BHR">Bahrain</option>
+            <option value="PRT">Portugal</option>
+            <option value="EST">Estonia</option>
+            <option value="GRC">Greece</option>
+            <option value="KWT">Kuwait</option>
+            <option value="MAR">Morocco</option>
+            <option value="NOR">Norway</option>
+            <option value="PER">Peru</option>
+            <option value="PRI">Puerto Rico</option>
+          </select>
+        </div>
+        <div id="state_grid">
+          <select data-trigger data-additions="true" id="state" class="form-control" multiple>
+            <option placeholder="" value="">STATE/PROVINCE</option>
+            <option value="Washington">Washington</option>
+            <option value="Virginia">Virginia</option>
+            <option value="California">California</option>
+            <option value="Karnataka">Karnataka</option>
+            <option value="New York">New York</option>
+            <option value="Texas">Texas</option>
+            <option value="Tennessee">Tennessee</option>
+            <option value="Telangana">Telangana</option>
+            <option value="Massachusetts">Massachusetts</option>
+            <option value="Luxembourg">Luxembourg</option>
+            <option value="Arizona">Arizona</option>
+            <option value="Tamil Nadu">Tamil Nadu</option>
+            <option value="Ohio">Ohio</option>
+            <option value="Mexico City">Mexico City</option>
+            <option value="Berlin">Berlin</option>
+            <option value="Illinois">Illinois</option>
+            <option value="Bavaria">Bavaria</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Maharashtra">Maharashtra</option>
+            <option value="New South Wales">New South Wales</option>
+            <option value="Sao Paulo">Sao Paulo</option>
+            <option value="North-Rhine-Westphalia">North-Rhine-Westphalia</option>
+            <option value="Colorado">Colorado</option>
+            <option value="Ontario">Ontario</option>
+            <option value="Community of Madrid">Community of Madrid</option>
+            <option value="Ile-de-France">Ile-de-France</option>
+            <option value="Catalonia">Catalonia</option>
+            <option value="Oregon">Oregon</option>
+            <option value="New Jersey">New Jersey</option>
+            <option value="Lower-Saxony">Lower-Saxony</option>
+            <option value="Maryland">Maryland</option>
+            <option value="Florida">Florida</option>
+            <option value="Pennsylvania">Pennsylvania</option>
+            <option value="Haryana">Haryana</option>
+            <option value="Hesse">Hesse</option>
+            <option value="British Columbia">British Columbia</option>
+            <option value="Victoria">Victoria</option>
+            <option value="Bratislavský kraj">Bratislavský kraj</option>
+            <option value="Lombardy">Lombardy</option>
+            <option value="National Capital Region">Manilla National Capital Region</option>
+            <option value="Minnesota">Minnesota</option>
+            <option value="San Jose">San Jose</option>
+            <option value="Western Cape">Western Cape</option>
+            <option value="Jalisco">Jalisco</option>
+            <option value="Michigan">Michigan</option>
+            <option value="District of Columbia">District of Columbia</option>
+            <option value="Indiana">Indiana</option>
+            <option value="Istanbul">Istanbul</option>
+            <option value="Tel Aviv">Tel Aviv</option>
+            <option value="Heredia">Heredia</option>
+            <option value="Saxony">Saxony</option>
+            <option value="Quebec">Quebec</option>
+            <option value="Piedmont">Piedmont</option>
+            <option value="Louisiana">Louisiana</option>
+            <option value="North Holland">North Holland</option>
+            <option value="Rhineland-Palatinate">Rhineland-Palatinate</option>
+            <option value="Uttar Pradesh">Uttar Pradesh</option>
+            <option value="Kentucky">Kentucky</option>
+            <option value="Baden-Wurttemberg">Baden-Wurttemberg</option>
+            <option value="Pomeranian Voivodeship">Pomeranian Voivodeship</option>
+            <option value="Thuringia">Thuringia</option>
+            <option value="North Carolina">North Carolina</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Auvergne-Rhone-Alpes">Auvergne-Rhone-Alpes</option>
+            <option value="Prague">Prague</option>
+            <option value="Haifa">Haifa</option>
+            <option value="Mississippi">Mississippi</option>
+            <option value="Silesian Voivodeship">Silesian Voivodeship</option>
+            <option value="Berkshire">Berkshire</option>
+            <option value="Nuevo Leon">Nuevo Leon</option>
+            <option value="Brandenburg">Brandenburg</option>
+            <option value="EDOMEX">EDOMEX</option>
+            <option value="Emilia-Romagna">Emilia-Romagna</option>
+            <option value="Gujarat">Gujarat</option>
+            <option value="Queensland">Queensland</option>
+            <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
+            <option value="Wisconsin">Wisconsin</option>
+            <option value="Auckland">Auckland</option>
+            <option value="Hamburg">Hamburg</option>
+            <option value="Veneto">Veneto</option>
+            <option value="West Bengal">West Bengal</option>
+            <option value="Hauts-de-France">Hauts-de-France</option>
+            <option value="Lubusz Voivodeship">Lubusz Voivodeship</option>
+            <option value="Aragon">Aragon</option>
+            <option value="Nevada">Nevada</option>
+            <option value="Missouri">Missouri</option>
+            <option value="Hong Kong">Hong Kong</option>
+            <option value="Alberta">Alberta</option>
+            <option value="Bremen">Bremen</option>
+            <option value="Centre-Val de Loire">Centre-Val de Loire</option>
+            <option value="Guanajuato">Guanajuato</option>
+            <option value="Latium">Latium</option>
+            <option value="Wellington">Wellington</option>
+            <option value="Woj. Mazowieckie">Woj. Mazowieckie</option>
+            <option value="Gauteng">Gauteng</option>
+            <option value="Grand Est">Grand Est</option>
+            <option value="New Mexico">New Mexico</option>
+            <option value="Bourgogne-Franche-Comte">Bourgogne-Franche-Comte</option>
+            <option value="Connecticut">Connecticut</option>
+            <option value="Styria">Styria</option>
+            <option value="Zurich">Zurich</option>
+            <option value="Brussels">Brussels</option>
+            <option value="Delaware">Delaware</option>
+            <option value="Kansas">Kansas</option>
+            <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+            <option value="Queretaro">Queretaro</option>
+            <option value="Iowa">Iowa</option>
+            <option value="Lower Silesian Voivodeship">Lower Silesian Voivodeship</option>
+            <option value="Principality of Asturias">Principality of Asturias</option>
+            <option value="Rajasthan">Rajasthan</option>
+            <option value="South Carolina">South Carolina</option>
+            <option value="Stockholm County">Stockholm County</option>
+            <option value="Středočeský kraj">Středočeský kraj</option>
+            <option value="Wilayah Persekutuan Kuala Lumpur">Wilayah Persekutuan Kuala Lumpur
+            </option>
+            <option value="Central Visayas">Central Visayas</option>
+            <option value="Lodz Voivodeship">Lodz Voivodeship</option>
+            <option value="Nairobi">Nairobi</option>
+            <option value="Oklahoma">Oklahoma</option>
+            <option value="Schleswig-Holstein">Schleswig-Holstein</option>
+            <option value="South Dakota">South Dakota</option>
+            <option value="Utah">Utah</option>
+            <option value="Castille-La Mancha">Castille-La Mancha</option>
+            <option value="Nebraska">Nebraska</option>
+            <option value="North Dakota">North Dakota</option>
+            <option value="Olomoucký kraj">Olomoucký kraj</option>
+            <option value="Sodermanland County">Sodermanland County</option>
+            <option value="Vastmanland County">Vastmanland County</option>
+            <option value="Arkansas">Arkansas</option>
+            <option value="Flanders">Flanders</option>
+            <option value="Provence-Alpes-Cote d'Azur">Provence-Alpes-Cote d'Azur</option>
+            <option value="Punjab">Punjab</option>
+            <option value="Region Santiago Metropolitan">Region Santiago Metropolitan</option>
+            <option value="South Holland">South Holland</option>
+            <option value="Western Australia">Western Australia</option>
+            <option value="Abruzzo">Abruzzo</option>
+            <option value="Buenos Aires Autonomous City">Buenos Aires Autonomous City</option>
+            <option value="Murcia Region">Murcia Region</option>
+            <option value="New Hampshire">New Hampshire</option>
+            <option value="Nouvelle-Aquitaine">Nouvelle-Aquitaine</option>
+            <option value="Puebla">Puebla</option>
+            <option value="Yucatan">Yucatan</option>
+            <option value="Ústecký kraj">Ústecký kraj</option>
+            <option value="Alabama">Alabama</option>
+            <option value="Andhra Pradesh">Andhra Pradesh</option>
+            <option value="Loire Region">Loire Region</option>
+            <option value="Marches">Marches</option>
+            <option value="Tuscany">Tuscany</option>
+            <option value="Valencian Community">Valencian Community</option>
+            <option value="West Pomeranian Voivodeship">West Pomeranian Voivodeship</option>
+            <option value="Brittany">Brittany</option>
+            <option value="Coahuila">Coahuila</option>
+            <option value="Friuli-Venezia Giulia">Friuli-Venezia Giulia</option>
+            <option value="Greater Poland Voivodeship">Greater Poland Voivodeship</option>
+            <option value="Madhya Pradesh">Madhya Pradesh</option>
+            <option value="Normandy">Normandy</option>
+            <option value="Occitanie">Occitanie</option>
+            <option value="Quintana Roo">Quintana Roo</option>
+            <option value="Sonora">Sonora</option>
+            <option value="Vienna">Vienna</option>
+            <option value="Andalucia">Andalucia</option>
+            <option value="Assam">Assam</option>
+            <option value="Australian Capital Territory">Australian Capital Territory</option>
+            <option value="Baja California">Baja California</option>
+            <option value="Capital">Capital</option>
+            <option value="Lower Austria">Lower Austria</option>
+            <option value="Rio de Janeiro">Rio de Janeiro</option>
+            <option value="Saarland">Saarland</option>
+            <option value="Sinaloa">Sinaloa</option>
+            <option value="West and Inner Finland">West and Inner Finland</option>
+            <option value="Bihar">Bihar</option>
+            <option value="Campania">Campania</option>
+            <option value="Carinthia">Carinthia</option>
+            <option value="Castilla and Leon">Castilla and Leon</option>
+            <option value="Galicia">Galicia</option>
+            <option value="Geneva">Geneva</option>
+            <option value="Hawaii">Hawaii</option>
+            <option value="Kerala">Kerala</option>
+            <option value="Limburg">Limburg</option>
+            <option value="Manitoba">Manitoba</option>
+            <option value="San Luis Potosi">San Luis Potosi</option>
+            <option value="Trentino-Alto Adige">Trentino-Alto Adige</option>
+            <option value="Trnavský kraj">Trnavský kraj</option>
+            <option value="Amazonas">Amazonas</option>
+            <option value="Apulia">Apulia</option>
+            <option value="Attiki">Attiki</option>
+            <option value="Callao">Callao</option>
+            <option value="Ceara">Ceara</option>
+            <option value="Chihuahua">Chihuahua</option>
+            <option value="Distrito Federal">Distrito Federal</option>
+            <option value="Idaho">Idaho</option>
+            <option value="Lesser Poland Voivodeship">Lesser Poland Voivodeship</option>
+            <option value="Mexico">Mexico</option>
+            <option value="Minas Gerais">Minas Gerais</option>
+            <option value="Morelos">Morelos</option>
+            <option value="Nova Scotia">Nova Scotia</option>
+            <option value="Oslo">Oslo</option>
+            <option value="Para">Para</option>
+            <option value="Pernambuco">Pernambuco</option>
+            <option value="Puerto Rico">Puerto Rico</option>
+            <option value="Rabat - Sale - Kenitra">Rabat - Sale - Kenitra</option>
+            <option value="Rhode Island">Rhode Island</option>
+            <option value="Sardinia">Sardinia</option>
+            <option value="South Australia">South Australia</option>
+            <option value="South Finland">South Finland</option>
+            <option value="Tabasco">Tabasco</option>
+            <option value="West Virginia">West Virginia</option>
+          </select>
+        </div>
+        <div id="city_grid">
+          <select data-trigger data-additions="true" id="cities" class="form-control" multiple>
+            <option placeholder="" value="">City</option>
+            <option value="Seattle">Seattle</option>
+            <option value="Bellevue">Bellevue</option>
+            <option value="Bengaluru">Bengaluru</option>
+            <option value="Arlington">Arlington</option>
+            <option value="New York">New York</option>
+            <option value="Austin">Austin</option>
+            <option value="Tokyo">Tokyo</option>
+            <option value="Nashville">Nashville</option>
+            <option value="Hyderabad">Hyderabad</option>
+            <option value="London">London</option>
+            <option value="Chiba">Chiba</option>
+            <option value="Redmond">Redmond</option>
+            <option value="Herndon">Herndon</option>
+            <option value="Luxembourg">Luxembourg</option>
+            <option value="Sunnyvale">Sunnyvale</option>
+            <option value="San Francisco">San Francisco</option>
+            <option value="Boston">Boston</option>
+            <option value="Chennai">Chennai</option>
+            <option value="Dublin">Dublin</option>
+            <option value="Dallas">Dallas</option>
+            <option value="Mexico City">Mexico City</option>
+            <option value="Berlin">Berlin</option>
+            <option value="Shanghai">Shanghai</option>
+            <option value="Chicago">Chicago</option>
+            <option value="Sydney">Sydney</option>
+            <option value="Sao Paulo">Sao Paulo</option>
+            <option value="North Reading">North Reading</option>
+            <option value="Atlanta">Atlanta</option>
+            <option value="Tempe">Tempe</option>
+            <option value="Shenzhen">Shenzhen</option>
+            <option value="Mumbai">Mumbai</option>
+            <option value="Toronto">Toronto</option>
+            <option value="Beijing">Beijing</option>
+            <option value="Denver">Denver</option>
+            <option value="Munich">Munich</option>
+            <option value="Santa Clara">Santa Clara</option>
+            <option value="Madrid">Madrid</option>
+            <option value="Los Angeles">Los Angeles</option>
+            <option value="Culver City">Culver City</option>
+            <option value="Santa Monica">Santa Monica</option>
+            <option value="Barcelona">Barcelona</option>
+            <option value="Westborough">Westborough</option>
+            <option value="Irvine">Irvine</option>
+            <option value="San Jose">San Jose</option>
+            <option value="Cupertino">Cupertino</option>
+            <option value="Taipei City">Taipei City</option>
+            <option value="Singapore">Singapore</option>
+            <option value="Cairo">Cairo</option>
+            <option value="Gurugram">Gurugram</option>
+            <option value="Phoenix">Phoenix</option>
+            <option value="Vancouver">Vancouver</option>
+            <option value="San Diego">San Diego</option>
+            <option value="Bratislava">Bratislava</option>
+            <option value="Dubai">Dubai</option>
+            <option value="Melbourne">Melbourne</option>
+            <option value="Cape Town">Cape Town</option>
+            <option value="Palo Alto">Palo Alto</option>
+            <option value="Houston">Houston</option>
+            <option value="Milan">Milan</option>
+            <option value="Chengdu">Chengdu</option>
+            <option value="Seoul">Seoul</option>
+            <option value="Guadalajara">Guadalajara</option>
+            <option value="Minneapolis">Minneapolis</option>
+            <option value="Frankfurt">Frankfurt</option>
+            <option value="Hilliard">Hilliard</option>
+            <option value="Washington">Washington</option>
+            <option value="Clichy">Clichy</option>
+            <option value="New Albany">New Albany</option>
+            <option value="Istanbul">Istanbul</option>
+            <option value="Tel Aviv-Yafo">Tel Aviv-Yafo</option>
+            <option value="Columbus">Columbus</option>
+            <option value="Osaka">Osaka</option>
+            <option value="Portland">Portland</option>
+            <option value="Cambridge">Cambridge</option>
+            <option value="Maebashi">Maebashi</option>
+            <option value="Amsterdam">Amsterdam</option>
+            <option value="Manchester">Manchester</option>
+            <option value="Riyadh">Riyadh</option>
+            <option value="Sterling">Sterling</option>
+            <option value="Detroit">Detroit</option>
+            <option value="Kirkland">Kirkland</option>
+            <option value="Paris">Paris</option>
+            <option value="Manassas">Manassas</option>
+            <option value="East Palo Alto">East Palo Alto</option>
+            <option value="Gdansk">Gdansk</option>
+            <option value="Jersey City">Jersey City</option>
+            <option value="Kawaguchi">Kawaguchi</option>
+            <option value="Manila">Manila</option>
+            <option value="Hawthorne">Hawthorne</option>
+            <option value="Kanazawa">Kanazawa</option>
+            <option value="West Hollywood">West Hollywood</option>
+            <option value="Pasay City">Pasay City</option>
+            <option value="Boardman">Boardman</option>
+            <option value="Horn-Bad Meinberg">Horn-Bad Meinberg</option>
+            <option value="Bucharest">Bucharest</option>
+            <option value="Heredia">Heredia</option>
+            <option value="Simi Valley">Simi Valley</option>
+            <option value="Fukuoka">Fukuoka</option>
+            <option value="Prague">Prague</option>
+            <option value="Annapolis Junction">Annapolis Junction</option>
+            <option value="Haifa">Haifa</option>
+            <option value="Chantilly">Chantilly</option>
+            <option value="Umatilla">Umatilla</option>
+            <option value="Thames Valley">Thames Valley</option>
+            <option value="Amman">Amman</option>
+            <option value="Dortmund">Dortmund</option>
+            <option value="Hamburg">Hamburg</option>
+            <option value="Hangzhou">Hangzhou</option>
+            <option value="Hsinchu City">Hsinchu City</option>
+            <option value="Pune">Pune</option>
+            <option value="Ashburn">Ashburn</option>
+            <option value="Coalville">Coalville</option>
+            <option value="Plain City">Plain City</option>
+            <option value="Sayama">Sayama</option>
+            <option value="Columbia">Columbia</option>
+            <option value="Großenkneten">Großenkneten</option>
+            <option value="Helmstedt">Helmstedt</option>
+            <option value="Iasi">Iasi</option>
+            <option value="Ibaraki">Ibaraki</option>
+            <option value="Achim">Achim</option>
+            <option value="Auckland">Auckland</option>
+            <option value="Erfurt">Erfurt</option>
+            <option value="Leipzig">Leipzig</option>
+            <option value="Sagamihara">Sagamihara</option>
+            <option value="Shreveport">Shreveport</option>
+            <option value="Tenri-Shi">Tenri-Shi</option>
+            <option value="Canton">Canton</option>
+            <option value="Malvern">Malvern</option>
+            <option value="Merritt Island">Merritt Island</option>
+            <option value="Montreal">Montreal</option>
+            <option value="Baltimore">Baltimore</option>
+            <option value="Brisbane">Brisbane</option>
+            <option value="Mönchengladbach">Mönchengladbach</option>
+            <option value="Oelde">Oelde</option>
+            <option value="Tepotzotlán">Tepotzotlán</option>
+            <option value="Świebodzin">Świebodzin</option>
+            <option value="Courbevoie">Courbevoie</option>
+            <option value="Goodyear">Goodyear</option>
+            <option value="Hermiston">Hermiston</option>
+            <option value="Ahmedabad">Ahmedabad</option>
+            <option value="Alessandria">Alessandria</option>
+            <option value="Baton Rouge">Baton Rouge</option>
+            <option value="Cologne">Cologne</option>
+            <option value="Gera">Gera</option>
+            <option value="Nonoichi">Nonoichi</option>
+            <option value="Sendai">Sendai</option>
+            <option value="Wilmington">Wilmington</option>
+            <option value="Bangkok">Bangkok</option>
+            <option value="Erlanger">Erlanger</option>
+            <option value="Gattendorf">Gattendorf</option>
+            <option value="Jeddah">Jeddah</option>
+            <option value="Machida-Shi">Machida-Shi</option>
+            <option value="Pittsburgh">Pittsburgh</option>
+            <option value="Sumner">Sumner</option>
+            <option value="Sülzetal">Sülzetal</option>
+            <option value="Zaragoza">Zaragoza</option>
+            <option value="Fuchu-Shi">Fuchu-Shi</option>
+            <option value="Gorzyce">Gorzyce</option>
+            <option value="León">León</option>
+            <option value="Lyon">Lyon</option>
+            <option value="Newark">Newark</option>
+            <option value="Noida">Noida</option>
+            <option value="Oceanside">Oceanside</option>
+            <option value="Ota">Ota</option>
+            <option value="Sakai">Sakai</option>
+            <option value="Thane">Thane</option>
+            <option value="Tilbury">Tilbury</option>
+            <option value="Bremen">Bremen</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Dusseldorf">Dusseldorf</option>
+            <option value="Kobe">Kobe</option>
+            <option value="Miami">Miami</option>
+            <option value="Wellington">Wellington</option>
+            <option value="Yotsukaido-Shi">Yotsukaido-Shi</option>
+            <option value="Aurora">Aurora</option>
+            <option value="Avondale">Avondale</option>
+            <option value="Brétigny-sur-Orge">Brétigny-sur-Orge</option>
+            <option value="Eggolsheim">Eggolsheim</option>
+            <option value="Everett">Everett</option>
+            <option value="Graben">Graben</option>
+            <option value="Nagareyama-Shi">Nagareyama-Shi</option>
+            <option value="Warsaw">Warsaw</option>
+            <option value="Zagreb">Zagreb</option>
+            <option value="Amagasaki">Amagasaki</option>
+            <option value="Jakarta">Jakarta</option>
+            <option value="Kaiserslautern">Kaiserslautern</option>
+            <option value="Kawajima">Kawajima</option>
+            <option value="Niigata">Niigata</option>
+            <option value="Pasadena">Pasadena</option>
+            <option value="Pasco">Pasco</option>
+            <option value="Zapopan">Zapopan</option>
+            <option value="Abu Dhabi">Abu Dhabi</option>
+            <option value="Apodaca">Apodaca</option>
+            <option value="Bad Hersfeld">Bad Hersfeld</option>
+            <option value="Bogota, D.C.">Bogota, D.C.</option>
+            <option value="Bristol">Bristol</option>
+            <option value="Cork">Cork</option>
+            <option value="Dresden">Dresden</option>
+            <option value="Hanoi">Hanoi</option>
+            <option value="Hensley Park">Hensley Park</option>
+            <option value="Jamaica Plain">Jamaica Plain</option>
+            <option value="Kobern-Gondorf">Kobern-Gondorf</option>
+            <option value="New Delhi">New Delhi</option>
+            <option value="Premstätten">Premstätten</option>
+            <option value="Wakefield">Wakefield</option>
+            <option value="Werne">Werne</option>
+            <option value="Witten">Witten</option>
+            <option value="Zurich">Zurich</option>
+            <option value="Breinigsville">Breinigsville</option>
+            <option value="Brussels">Brussels</option>
+            <option value="Doncaster">Doncaster</option>
+            <option value="Emsbüren">Emsbüren</option>
+            <option value="Frankenthal">Frankenthal</option>
+            <option value="Gernsheim">Gernsheim</option>
+            <option value="Girona">Girona</option>
+            <option value="Hiroshima">Hiroshima</option>
+            <option value="Lucknow">Lucknow</option>
+            <option value="Mountain View">Mountain View</option>
+            <option value="Nagoya">Nagoya</option>
+            <option value="Oppeano">Oppeano</option>
+            <option value="Paderborn">Paderborn</option>
+            <option value="Spilamberto">Spilamberto</option>
+            <option value="Tracy">Tracy</option>
+            <option value="Union City">Union City</option>
+            <option value="Wan Chai">Wan Chai</option>
+            <option value="Winsen (Luhe)">Winsen (Luhe)</option>
+            <option value="Bielefeld">Bielefeld</option>
+            <option value="Cuauhtémoc">Cuauhtémoc</option>
+            <option value="Dobrovíz">Dobrovíz</option>
+            <option value="Edinburgh">Edinburgh</option>
+            <option value="Edison">Edison</option>
+            <option value="Erding">Erding</option>
+            <option value="Fredericksburg">Fredericksburg</option>
+            <option value="Hollister">Hollister</option>
+            <option value="Kuala Lumpur">Kuala Lumpur</option>
+            <option value="Kyoto">Kyoto</option>
+            <option value="Las Vegas">Las Vegas</option>
+            <option value="Louisville">Louisville</option>
+            <option value="Ome-Shi">Ome-Shi</option>
+            <option value="Portage">Portage</option>
+            <option value="Richmond">Richmond</option>
+            <option value="Rochester">Rochester</option>
+            <option value="Schönefeld">Schönefeld</option>
+            <option value="Siero">Siero</option>
+            <option value="Sosnowiec">Sosnowiec</option>
+            <option value="Stockholm">Stockholm</option>
+            <option value="Tajimi">Tajimi</option>
+            <option value="Tosu">Tosu</option>
+            <option value="Alexandria">Alexandria</option>
+            <option value="Castel San Giovanni">Castel San Giovanni</option>
+            <option value="Cebu City">Cebu City</option>
+            <option value="Daxian">Daxian</option>
+            <option value="Fort Worth">Fort Worth</option>
+            <option value="Guangzhou">Guangzhou</option>
+            <option value="Hanover">Hanover</option>
+            <option value="Heidenheim an der Brenz">Heidenheim an der Brenz</option>
+            <option value="Hirakata">Hirakata</option>
+            <option value="Ilayangudi">Ilayangudi</option>
+            <option value="Kemps Creek">Kemps Creek</option>
+            <option value="Kolkata">Kolkata</option>
+            <option value="Leeds">Leeds</option>
+            <option value="Nairobi">Nairobi</option>
+            <option value="Ningbo">Ningbo</option>
+            <option value="Novara">Novara</option>
+            <option value="Olching">Olching</option>
+            <option value="Plainfield">Plainfield</option>
+            <option value="Queretaro">Queretaro</option>
+            <option value="Raleigh">Raleigh</option>
+            <option value="Rheinberg">Rheinberg</option>
+            <option value="San Fernando de Henares">San Fernando de Henares</option>
+            <option value="Satolas-et-Bonce">Satolas-et-Bonce</option>
+            <option value="Sioux Falls">Sioux Falls</option>
+            <option value="Sparrows Point">Sparrows Point</option>
+            <option value="Swindon">Swindon</option>
+            <option value="Waterfall">Waterfall</option>
+            <option value="Aachen">Aachen</option>
+            <option value="Augny">Augny</option>
+            <option value="Beverly Hills">Beverly Hills</option>
+            <option value="Bremerhaven">Bremerhaven</option>
+            <option value="Coventry">Coventry</option>
+            <option value="Davenport">Davenport</option>
+            <option value="Fargo">Fargo</option>
+            <option value="Fort Wayne">Fort Wayne</option>
+            <option value="Garbsen">Garbsen</option>
+            <option value="Garland">Garland</option>
+            <option value="Hiratsuka">Hiratsuka</option>
+            <option value="Homestead">Homestead</option>
+            <option value="Illescas">Illescas</option>
+            <option value="Kawasaki">Kawasaki</option>
+            <option value="Kojetín">Kojetín</option>
+            <option value="Miyagi">Miyagi</option>
+            <option value="New Stanton">New Stanton</option>
+            <option value="Odawara">Odawara</option>
+            <option value="Ottawa">Ottawa</option>
+            <option value="Port St Lucie">Port St Lucie</option>
+            <option value="Redditch">Redditch</option>
+            <option value="Rovigo">Rovigo</option>
+            <option value="St Louis">St Louis</option>
+            <option value="Staten Island">Staten Island</option>
+            <option value="Stockton">Stockton</option>
+            <option value="Vasteras">Vasteras</option>
+            <option value="Weybridge">Weybridge</option>
+            <option value="Albuquerque">Albuquerque</option>
+            <option value="Buckeye">Buckeye</option>
+            <option value="Cartersville">Cartersville</option>
+            <option value="Charlotte">Charlotte</option>
+            <option value="Cloppenburg">Cloppenburg</option>
+            <option value="Culpeper">Culpeper</option>
+            <option value="Dunstable">Dunstable</option>
+            <option value="Essen">Essen</option>
+            <option value="Giza">Giza</option>
+            <option value="Greenwood">Greenwood</option>
+            <option value="Guadalupe">Guadalupe</option>
+            <option value="Hayward">Hayward</option>
+            <option value="Kansas City">Kansas City</option>
+            <option value="Kenosha">Kenosha</option>
+            <option value="Kent">Kent</option>
+            <option value="Kobierzyce">Kobierzyce</option>
+            <option value="Lansing">Lansing</option>
+            <option value="Lauwin-Planque">Lauwin-Planque</option>
+            <option value="Laval">Laval</option>
+            <option value="Lebanon">Lebanon</option>
+            <option value="Little Rock">Little Rock</option>
+            <option value="Liverpool">Liverpool</option>
+            <option value="Mansfield">Mansfield</option>
+            <option value="North Andover">North Andover</option>
+            <option value="Oklahoma City">Oklahoma City</option>
+            <option value="Pforzheim">Pforzheim</option>
+            <option value="Pooler">Pooler</option>
+            <option value="Reading">Reading</option>
+            <option value="Rome">Rome</option>
+            <option value="Sacramento">Sacramento</option>
+            <option value="Sakado-Shi">Sakado-Shi</option>
+            <option value="Santiago">Santiago</option>
+            <option value="Saran">Saran</option>
+            <option value="Senlis">Senlis</option>
+            <option value="Shakopee">Shakopee</option>
+            <option value="Shepherdsville">Shepherdsville</option>
+            <option value="Stoughton">Stoughton</option>
+            <option value="Suffolk">Suffolk</option>
+            <option value="Werder (Havel)">Werder (Havel)</option>
+            <option value="Bad Oldesloe">Bad Oldesloe</option>
+            <option value="Buenos Aires City">Buenos Aires City</option>
+            <option value="Cajamar">Cajamar</option>
+            <option value="Carteret">Carteret</option>
+            <option value="Chojnów (Gmina)">Chojnów (Gmina)</option>
+            <option value="Clarksville">Clarksville</option>
+            <option value="Darlington">Darlington</option>
+            <option value="Dunfermline">Dunfermline</option>
+            <option value="Durham">Durham</option>
+            <option value="Emden">Emden</option>
+            <option value="Eskilstuna">Eskilstuna</option>
+            <option value="Florence">Florence</option>
+            <option value="Franklin">Franklin</option>
+            <option value="Gateshead">Gateshead</option>
+            <option value="Hagerstown">Hagerstown</option>
+            <option value="Hemel Hempstead">Hemel Hempstead</option>
+            <option value="Hong Kong">Hong Kong</option>
+            <option value="Hyogo-Ku">Hyogo-Ku</option>
+            <option value="Jackson">Jackson</option>
+            <option value="Jirkov">Jirkov</option>
+            <option value="Joliet">Joliet</option>
+            <option value="Kaichi">Kaichi</option>
+            <option value="Korntal-Münchingen">Korntal-Münchingen</option>
+            <option value="Lodz">Lodz</option>
+            <option value="Los Lunas">Los Lunas</option>
+            <option value="Memphis">Memphis</option>
+            <option value="Merida">Merida</option>
+            <option value="Meßkirch">Meßkirch</option>
+            <option value="Monterrey">Monterrey</option>
+            <option value="Mulgrave">Mulgrave</option>
+            <option value="Murcia">Murcia</option>
+            <option value="Nagpur">Nagpur</option>
+            <option value="Nanjing">Nanjing</option>
+            <option value="Northridge">Northridge</option>
+            <option value="Olyphant">Olyphant</option>
+            <option value="Orleans">Orleans</option>
+            <option value="Peterborough">Peterborough</option>
+            <option value="Rostock">Rostock</option>
+            <option value="Rugby">Rugby</option>
+            <option value="Salem">Salem</option>
+            <option value="Salt Lake City">Salt Lake City</option>
+            <option value="San Antonio">San Antonio</option>
+            <option value="San Salvo">San Salvo</option>
+            <option value="Schortens">Schortens</option>
+            <option value="Sevrey">Sevrey</option>
+            <option value="Stafford">Stafford</option>
+            <option value="Swansea">Swansea</option>
+            <option value="Tlaquepaque">Tlaquepaque</option>
+            <option value="Vercelli">Vercelli</option>
+            <option value="Warrington">Warrington</option>
+            <option value="Windsor">Windsor</option>
+            <option value="Barueri">Barueri</option>
+            <option value="Bayreuth">Bayreuth</option>
+            <option value="Birmingham">Birmingham</option>
+            <option value="Boves">Boves</option>
+            <option value="Calgary">Calgary</option>
+            <option value="Camerano">Camerano</option>
+            <option value="Casirate d'Adda">Casirate d'Adda</option>
+            <option value="Chesterfield">Chesterfield</option>
+            <option value="Cividate al Piano">Cividate al Piano</option>
+            <option value="Colorado Springs">Colorado Springs</option>
+            <option value="Commerce City">Commerce City</option>
+            <option value="Coppell">Coppell</option>
+            <option value="Dartford">Dartford</option>
+            <option value="Daventry">Daventry</option>
+            <option value="Euclid">Euclid</option>
+            <option value="Fara in Sabina">Fara in Sabina</option>
+            <option value="Fayetteville">Fayetteville</option>
+            <option value="Fujiidera">Fujiidera</option>
+            <option value="Garner">Garner</option>
+            <option value="Gliwice">Gliwice</option>
+            <option value="Greencastle">Greencastle</option>
+            <option value="Hoppegarten">Hoppegarten</option>
+            <option value="Huesca">Huesca</option>
+            <option value="Indianapolis">Indianapolis</option>
+            <option value="Jaipur">Jaipur</option>
+            <option value="Katrineholm">Katrineholm</option>
+            <option value="Knüllwald">Knüllwald</option>
+            <option value="Lexington">Lexington</option>
+            <option value="Longvic">Longvic</option>
+            <option value="Magdeburg">Magdeburg</option>
+            <option value="Mayfield Village">Mayfield Village</option>
+            <option value="Mesa">Mesa</option>
+            <option value="Milton Keynes">Milton Keynes</option>
+            <option value="Mt Juliet">Mt Juliet</option>
+            <option value="Nantes">Nantes</option>
+            <option value="Noisy-le-Grand">Noisy-le-Grand</option>
+            <option value="Oak Creek">Oak Creek</option>
+            <option value="Oerlenbach">Oerlenbach</option>
+            <option value="Oldenburg (Oldb.)">Oldenburg (Oldb.)</option>
+            <option value="Pabianice">Pabianice</option>
+            <option value="Perth">Perth</option>
+            <option value="Petersburg">Petersburg</option>
+            <option value="Puebla">Puebla</option>
+            <option value="Quincy">Quincy</option>
+            <option value="Robbinsville">Robbinsville</option>
+            <option value="San Bernardino">San Bernardino</option>
+            <option value="Santa Barbara">Santa Barbara</option>
+            <option value="Schkeuditz">Schkeuditz</option>
+            <option value="Somerset">Somerset</option>
+            <option value="Stockton-on-Tees">Stockton-on-Tees</option>
+            <option value="Surat">Surat</option>
+            <option value="Sutton Coldfield">Sutton Coldfield</option>
+            <option value="Szczecin">Szczecin</option>
+            <option value="Tampa">Tampa</option>
+            <option value="Temple Terrace">Temple Terrace</option>
+            <option value="Thornton">Thornton</option>
+            <option value="Torrazza Piemonte">Torrazza Piemonte</option>
+            <option value="Warrenton">Warrenton</option>
+            <option value="Weston">Weston</option>
+            <option value="Wilhelmshaven">Wilhelmshaven</option>
+            <option value="Wuppertal">Wuppertal</option>
+            <option value="Akron">Akron</option>
+            <option value="Anekal Sub-District">Anekal Sub-District</option>
+            <option value="Antwerp">Antwerp</option>
+            <option value="Appling">Appling</option>
+            <option value="Ashland">Ashland</option>
+            <option value="Avenel">Avenel</option>
+            <option value="Belfast">Belfast</option>
+            <option value="Bessemer">Bessemer</option>
+            <option value="Bolton">Bolton</option>
+            <option value="Bondurant">Bondurant</option>
+            <option value="Boulder">Boulder</option>
+            <option value="Brandenburg an der Havel">Brandenburg an der Havel</option>
+            <option value="Briec">Briec</option>
+            <option value="Calenzano">Calenzano</option>
+            <option value="Cancún">Cancún</option>
+            <option value="Cardiff">Cardiff</option>
+            <option value="Carros">Carros</option>
+            <option value="Castleton-on-Hudson">Castleton-on-Hudson</option>
+            <option value="Chattanooga">Chattanooga</option>
+            <option value="Chesapeake">Chesapeake</option>
+            <option value="Chino">Chino</option>
+            <option value="Cuautitlán Izcalli">Cuautitlán Izcalli</option>
+            <option value="Duisburg">Duisburg</option>
+            <option value="Dupont">Dupont</option>
+            <option value="East Syracuse">East Syracuse</option>
+            <option value="Englewood">Englewood</option>
+            <option value="Fall River">Fall River</option>
+            <option value="Fiume Veneto">Fiume Veneto</option>
+            <option value="Fontaine">Fontaine</option>
+            <option value="Freiburg">Freiburg</option>
+            <option value="Glendale">Glendale</option>
+            <option value="Grand Island">Grand Island</option>
+            <option value="Hamilton">Hamilton</option>
+            <option value="Hazleton">Hazleton</option>
+            <option value="Hebron">Hebron</option>
+            <option value="Hermosillo">Hermosillo</option>
+            <option value="Higashiosaka">Higashiosaka</option>
+            <option value="Hinckley">Hinckley</option>
+            <option value="Indore">Indore</option>
+            <option value="Jacksonville">Jacksonville</option>
+            <option value="Jeffersonville">Jeffersonville</option>
+            <option value="Jessup">Jessup</option>
+            <option value="Johannesburg">Johannesburg</option>
+            <option value="Kuki-Shi">Kuki-Shi</option>
+            <option value="Kumamoto">Kumamoto</option>
+            <option value="Leduc County">Leduc County</option>
+            <option value="Lengede">Lengede</option>
+            <option value="Liberty">Liberty</option>
+            <option value="Longueuil">Longueuil</option>
+            <option value="Los Gatos">Los Gatos</option>
+            <option value="Mannheim">Mannheim</option>
+            <option value="Mollet del Vallès">Mollet del Vallès</option>
+            <option value="Monee">Monee</option>
+            <option value="Monroe">Monroe</option>
+            <option value="Murfreesboro">Murfreesboro</option>
+            <option value="Neuenburg am Rhein">Neuenburg am Rhein</option>
+            <option value="New Castle">New Castle</option>
+            <option value="Nittenau">Nittenau</option>
+            <option value="North Las Vegas">North Las Vegas</option>
+            <option value="Northborough">Northborough</option>
+            <option value="Nützen">Nützen</option>
+            <option value="Oberkrämer">Oberkrämer</option>
+            <option value="Omaha">Omaha</option>
+            <option value="Onda">Onda</option>
+            <option value="Origgio">Origgio</option>
+            <option value="Ormes">Ormes</option>
+            <option value="Parkland County">Parkland County</option>
+            <option value="Parma">Parma</option>
+            <option value="Pommersfelden">Pommersfelden</option>
+            <option value="Pontiac">Pontiac</option>
+            <option value="Poznan">Poznan</option>
+            <option value="Reno">Reno</option>
+            <option value="Rockford">Rockford</option>
+            <option value="Rossford">Rossford</option>
+            <option value="Saint-Denis">Saint-Denis</option>
+            <option value="Saltillo">Saltillo</option>
+            <option value="Santa Cruz">Santa Cruz</option>
+            <option value="Sindelfingen">Sindelfingen</option>
+            <option value="South San Francisco">South San Francisco</option>
+            <option value="Spanaway">Spanaway</option>
+            <option value="Straubing">Straubing</option>
+            <option value="Taguig City">Taguig City</option>
+            <option value="The Hague">The Hague</option>
+            <option value="Tianjin">Tianjin</option>
+            <option value="Tulsa">Tulsa</option>
+            <option value="Ulm">Ulm</option>
+            <option value="University Park">University Park</option>
+            <option value="Unna">Unna</option>
+            <option value="Victoria">Victoria</option>
+            <option value="Vienna">Vienna</option>
+            <option value="Waukegan">Waukegan</option>
+            <option value="Woippy">Woippy</option>
+            <option value="Wunstorf">Wunstorf</option>
+            <option value="Yokohama">Yokohama</option>
+            <option value="Ahsa">Ahsa</option>
+            <option value="Annecy">Annecy</option>
+            <option value="Barberà del Vallès">Barberà del Vallès</option>
+            <option value="Beaumont">Beaumont</option>
+            <option value="Beloit">Beloit</option>
+            <option value="Berkeley">Berkeley</option>
+            <option value="Bispingen">Bispingen</option>
+            <option value="Bochum">Bochum</option>
+            <option value="Bordeaux">Bordeaux</option>
+            <option value="Borgstedt">Borgstedt</option>
+            <option value="Brampton">Brampton</option>
+            <option value="Brooklyn">Brooklyn</option>
+            <option value="Brooklyn Park">Brooklyn Park</option>
+            <option value="Buccinasco">Buccinasco</option>
+            <option value="Caledonia">Caledonia</option>
+            <option value="Calle Blancos">Calle Blancos</option>
+            <option value="Canberra">Canberra</option>
+            <option value="Chhatrapati Sambhaji Nagar">Chhatrapati Sambhaji Nagar</option>
+            <option value="Cleveland">Cleveland</option>
+            <option value="Coimbatore">Coimbatore</option>
+            <option value="Copenhagen">Copenhagen</option>
+            <option value="Costa di Mezzate">Costa di Mezzate</option>
+            <option value="Coteau-du-Lac">Coteau-du-Lac</option>
+            <option value="Culiacan">Culiacan</option>
+            <option value="Daito">Daito</option>
+            <option value="Delta">Delta</option>
+            <option value="Dummerstorf">Dummerstorf</option>
+            <option value="East Bolton">East Bolton</option>
+            <option value="El Paso">El Paso</option>
+            <option value="Enfield">Enfield</option>
+            <option value="Faridabad">Faridabad</option>
+            <option value="Fishersville">Fishersville</option>
+            <option value="Fishkill">Fishkill</option>
+            <option value="Getafe">Getafe</option>
+            <option value="Greece">Greece</option>
+            <option value="Greenfield">Greenfield</option>
+            <option value="Großebersdorf">Großebersdorf</option>
+            <option value="Guwahati">Guwahati</option>
+            <option value="Göttingen">Göttingen</option>
+            <option value="Hamme">Hamme</option>
+            <option value="Hazel Park">Hazel Park</option>
+            <option value="Henderson">Henderson</option>
+            <option value="Hillsboro">Hillsboro</option>
+            <option value="Hooksett">Hooksett</option>
+            <option value="Jamalpur">Jamalpur</option>
+            <option value="Jefferson">Jefferson</option>
+            <option value="Johnstown">Johnstown</option>
+            <option value="Kabelsketal">Kabelsketal</option>
+            <option value="Krefeld">Krefeld</option>
+            <option value="Langfang">Langfang</option>
+            <option value="Laurel">Laurel</option>
+            <option value="Lewisberry">Lewisberry</option>
+            <option value="Lille">Lille</option>
+            <option value="Long Beach">Long Beach</option>
+            <option value="Lunenburg">Lunenburg</option>
+            <option value="Maidstone">Maidstone</option>
+            <option value="Makkah">Makkah</option>
+            <option value="Manesar">Manesar</option>
+            <option value="Maple Grove">Maple Grove</option>
+            <option value="Marseille">Marseille</option>
+            <option value="Matteson">Matteson</option>
+            <option value="Morlaàs">Morlaàs</option>
+            <option value="Naples">Naples</option>
+            <option value="Oakley">Oakley</option>
+            <option value="Opa-Locka">Opa-Locka</option>
+            <option value="Orlando">Orlando</option>
+            <option value="Orly">Orly</option>
+            <option value="Park City">Park City</option>
+            <option value="Penns Grove">Penns Grove</option>
+            <option value="Princeton">Princeton</option>
+            <option value="Qingdao">Qingdao</option>
+            <option value="Redlands">Redlands</option>
+            <option value="Romulus">Romulus</option>
+            <option value="Rotenburg (Wümme)">Rotenburg (Wümme)</option>
+            <option value="Rozenburg">Rozenburg</option>
+            <option value="Saint-Étienne-du-Rouvray">Saint-Étienne-du-Rouvray</option>
+            <option value="Santiago de Querétaro">Santiago de Querétaro</option>
+            <option value="Sapporo">Sapporo</option>
+            <option value="Schwerin">Schwerin</option>
+            <option value="Shafter">Shafter</option>
+            <option value="Southampton">Southampton</option>
+            <option value="St Helens">St Helens</option>
+            <option value="Tampere">Tampere</option>
+            <option value="Tarragona">Tarragona</option>
+            <option value="Tijuana">Tijuana</option>
+            <option value="Toulouse">Toulouse</option>
+            <option value="Trierweiler">Trierweiler</option>
+            <option value="Troisdorf">Troisdorf</option>
+            <option value="Troutdale">Troutdale</option>
+            <option value="Turin">Turin</option>
+            <option value="Varennes">Varennes</option>
+            <option value="Visakhapatnam">Visakhapatnam</option>
+            <option value="Vélizy-Villacoublay">Vélizy-Villacoublay</option>
+            <option value="Völklingen">Völklingen</option>
+            <option value="Weiterstadt">Weiterstadt</option>
+            <option value="West Jefferson">West Jefferson</option>
+            <option value="Wolfhagen">Wolfhagen</option>
+            <option value="Yamato-Shi">Yamato-Shi</option>
+            <option value="Zhengzhou">Zhengzhou</option>
+            <option value="Bakersfield">Bakersfield</option>
+            <option value="Bedford">Bedford</option>
+            <option value="Belvedere">Belvedere</option>
+            <option value="Bonneuil-sur-Marne">Bonneuil-sur-Marne</option>
+            <option value="Bridgend">Bridgend</option>
+            <option value="Bronx">Bronx</option>
+            <option value="Brookshire">Brookshire</option>
+            <option value="Brownstown">Brownstown</option>
+            <option value="Burago di Molgora">Burago di Molgora</option>
+            <option value="Burlington">Burlington</option>
+            <option value="Calderara di Reno">Calderara di Reno</option>
+            <option value="Campbellsville">Campbellsville</option>
+            <option value="Carlisle">Carlisle</option>
+            <option value="Central Point">Central Point</option>
+            <option value="Charlton">Charlton</option>
+            <option value="Cincinnati">Cincinnati</option>
+            <option value="Cohoes">Cohoes</option>
+            <option value="Colleferro">Colleferro</option>
+            <option value="Craigavon">Craigavon</option>
+            <option value="Crest Hill">Crest Hill</option>
+            <option value="DFW Airport">DFW Airport</option>
+            <option value="Dale">Dale</option>
+            <option value="Dammam">Dammam</option>
+            <option value="Del Mar">Del Mar</option>
+            <option value="Deltona">Deltona</option>
+            <option value="Dormagen">Dormagen</option>
+            <option value="Dos Hermanas">Dos Hermanas</option>
+            <option value="Durrat Al Bahrain">Durrat Al Bahrain</option>
+            <option value="Edwardsville">Edwardsville</option>
+            <option value="El Salto">El Salto</option>
+            <option value="El Segundo">El Segundo</option>
+            <option value="Euskirchen">Euskirchen</option>
+            <option value="Evansville">Evansville</option>
+            <option value="Fontana">Fontana</option>
+            <option value="Forest Hill">Forest Hill</option>
+            <option value="Fort Lauderdale">Fort Lauderdale</option>
+            <option value="Friedrichsdorf">Friedrichsdorf</option>
+            <option value="Gardner">Gardner</option>
+            <option value="Geneva">Geneva</option>
+            <option value="Ghaziabad">Ghaziabad</option>
+            <option value="Glasgow">Glasgow</option>
+            <option value="Gouldsboro">Gouldsboro</option>
+            <option value="Grays">Grays</option>
+            <option value="Grugliasco">Grugliasco</option>
+            <option value="Hampton">Hampton</option>
+            <option value="Harlow">Harlow</option>
+            <option value="Harrisburg">Harrisburg</option>
+            <option value="Havant">Havant</option>
+            <option value="Ho Chi Minh">Ho Chi Minh</option>
+            <option value="Holbrook">Holbrook</option>
+            <option value="Horn Lake">Horn Lake</option>
+            <option value="Jericho">Jericho</option>
+            <option value="Joto-Ku">Joto-Ku</option>
+            <option value="Jupiter">Jupiter</option>
+            <option value="Kakinada">Kakinada</option>
+            <option value="Klagenfurt">Klagenfurt</option>
+            <option value="Knottingley">Knottingley</option>
+            <option value="Lake Grove">Lake Grove</option>
+            <option value="Lakeville">Lakeville</option>
+            <option value="Lampertswalde">Lampertswalde</option>
+            <option value="Lancaster">Lancaster</option>
+            <option value="Lenexa">Lenexa</option>
+            <option value="Lisbon">Lisbon</option>
+            <option value="Logan">Logan</option>
+            <option value="Madinah">Madinah</option>
+            <option value="Madison">Madison</option>
+            <option value="Medellin">Medellin</option>
+            <option value="Middletown">Middletown</option>
+            <option value="Milpitas">Milpitas</option>
+            <option value="Montélimar">Montélimar</option>
+            <option value="Moosburg">Moosburg</option>
+            <option value="Moreno Valley">Moreno Valley</option>
+            <option value="Moult-Chicheboville">Moult-Chicheboville</option>
+            <option value="Neubrandenburg">Neubrandenburg</option>
+            <option value="Newcastle">Newcastle</option>
+            <option value="North Randall">North Randall</option>
+            <option value="Oostrum">Oostrum</option>
+            <option value="Orange">Orange</option>
+            <option value="Padua">Padua</option>
+            <option value="Paramus">Paramus</option>
+            <option value="Patna">Patna</option>
+            <option value="Pennsylvania Furnace">Pennsylvania Furnace</option>
+            <option value="Pewaukee">Pewaukee</option>
+            <option value="Pisa">Pisa</option>
+            <option value="Pittston">Pittston</option>
+            <option value="Plymouth">Plymouth</option>
+            <option value="Quebec City">Quebec City</option>
+            <option value="Ramstein-Miesenbach">Ramstein-Miesenbach</option>
+            <option value="Ravenhall">Ravenhall</option>
+            <option value="Republic">Republic</option>
+            <option value="Riese Pio X">Riese Pio X</option>
+            <option value="Rio de Janeiro">Rio de Janeiro</option>
+            <option value="Rocky View County">Rocky View County</option>
+            <option value="Ruskin">Ruskin</option>
+            <option value="San Luis Potosi">San Luis Potosi</option>
+            <option value="Santa Clarita">Santa Clarita</option>
+            <option value="Sauget">Sauget</option>
+            <option value="Sereď">Sereď</option>
+            <option value="Shawnee">Shawnee</option>
+            <option value="Shippensburg">Shippensburg</option>
+            <option value="Slough">Slough</option>
+            <option value="South Bend">South Bend</option>
+            <option value="Spokane">Spokane</option>
+            <option value="Springdale">Springdale</option>
+            <option value="Springfield">Springfield</option>
+            <option value="Strasbourg">Strasbourg</option>
+            <option value="Stuttgart">Stuttgart</option>
+            <option value="Summerville">Summerville</option>
+            <option value="Tallahassee">Tallahassee</option>
+            <option value="Taunton">Taunton</option>
+            <option value="Teterboro">Teterboro</option>
+            <option value="Toluca">Toluca</option>
+            <option value="Torrance">Torrance</option>
+            <option value="Toyokawa-Shi">Toyokawa-Shi</option>
+            <option value="Trento">Trento</option>
+            <option value="Tsu-Shi">Tsu-Shi</option>
+            <option value="Tucson">Tucson</option>
+            <option value="Union">Union</option>
+            <option value="Uxbridge">Uxbridge</option>
+            <option value="Valladolid">Valladolid</option>
+            <option value="Valley View">Valley View</option>
+            <option value="Venice">Venice</option>
+            <option value="Villeneuve-lès-Bouloc">Villeneuve-lès-Bouloc</option>
+            <option value="Visalia">Visalia</option>
+            <option value="Weifang">Weifang</option>
+            <option value="Wenden">Wenden</option>
+            <option value="West Deptford">West Deptford</option>
+            <option value="West Jordan">West Jordan</option>
+            <option value="West New York">West New York</option>
+            <option value="Whitestown">Whitestown</option>
+            <option value="Winnipeg">Winnipeg</option>
+            <option value="Yachiyo">Yachiyo</option>
+            <option value="10th of Ramadan">10th of Ramadan</option>
+            <option value="Aberdeen">Aberdeen</option>
+            <option value="Abha">Abha</option>
+            <option value="Adelaide">Adelaide</option>
+            <option value="Agra">Agra</option>
+            <option value="Airdrie">Airdrie</option>
+            <option value="Ajax">Ajax</option>
+            <option value="Albany">Albany</option>
+            <option value="Alberta">Alberta</option>
+            <option value="Alcalá de Henares">Alcalá de Henares</option>
+            <option value="Alicante">Alicante</option>
+            <option value="Allentown">Allentown</option>
+            <option value="Amarillo">Amarillo</option>
+            <option value="Antioch">Antioch</option>
+            <option value="Ardea">Ardea</option>
+            <option value="Arlington Heights">Arlington Heights</option>
+            <option value="Arzano">Arzano</option>
+            <option value="Asti">Asti</option>
+            <option value="Athens">Athens</option>
+            <option value="Avion">Avion</option>
+            <option value="Bagalkot">Bagalkot</option>
+            <option value="Basalt">Basalt</option>
+            <option value="Bellingham">Bellingham</option>
+            <option value="Belém">Belém</option>
+            <option value="Bensalem">Bensalem</option>
+            <option value="Bethel">Bethel</option>
+            <option value="Bethpage">Bethpage</option>
+            <option value="Betim">Betim</option>
+            <option value="Bhiwandi">Bhiwandi</option>
+            <option value="Bitonto">Bitonto</option>
+            <option value="Blythewood">Blythewood</option>
+            <option value="Bonn">Bonn</option>
+            <option value="Bournemouth">Bournemouth</option>
+            <option value="Bradford">Bradford</option>
+            <option value="Bramsche">Bramsche</option>
+            <option value="Brasilia">Brasilia</option>
+            <option value="Bridgewater">Bridgewater</option>
+            <option value="Broomall">Broomall</option>
+            <option value="Brunswick">Brunswick</option>
+            <option value="Buena Park">Buena Park</option>
+            <option value="Buffalo">Buffalo</option>
+            <option value="Cagliari">Cagliari</option>
+            <option value="Calais">Calais</option>
+            <option value="Carlstadt">Carlstadt</option>
+            <option value="Carrollton">Carrollton</option>
+            <option value="Cassel">Cassel</option>
+            <option value="Castegnato">Castegnato</option>
+            <option value="Cavan">Cavan</option>
+            <option value="Champaign">Champaign</option>
+            <option value="Chandigarh">Chandigarh</option>
+            <option value="Channahon">Channahon</option>
+            <option value="Charleston">Charleston</option>
+            <option value="Chester">Chester</option>
+            <option value="Chevy Chase">Chevy Chase</option>
+            <option value="Chihuahua">Chihuahua</option>
+            <option value="Clear Brook">Clear Brook</option>
+            <option value="Colombia">Colombia</option>
+            <option value="Concord">Concord</option>
+            <option value="Coslada">Coslada</option>
+            <option value="Cracow">Cracow</option>
+            <option value="Cranbury">Cranbury</option>
+            <option value="Dalyenong">Dalyenong</option>
+            <option value="Daytona Beach">Daytona Beach</option>
+            <option value="Derby">Derby</option>
+            <option value="Didcot">Didcot</option>
+            <option value="Dijon">Dijon</option>
+            <option value="Doral">Doral</option>
+            <option value="Eagan">Eagan</option>
+            <option value="Eatontown">Eatontown</option>
+            <option value="Edgerton">Edgerton</option>
+            <option value="Edmonton">Edmonton</option>
+            <option value="Emiliano Zapata">Emiliano Zapata</option>
+            <option value="Etna">Etna</option>
+            <option value="Fernbrook">Fernbrook</option>
+            <option value="Fife">Fife</option>
+            <option value="Flörsheim am Main">Flörsheim am Main</option>
+            <option value="Fort Myers">Fort Myers</option>
+            <option value="Fresno">Fresno</option>
+            <option value="Fukuroi-Shi">Fukuroi-Shi</option>
+            <option value="Gainesville">Gainesville</option>
+            <option value="Gallicano nel Lazio">Gallicano nel Lazio</option>
+            <option value="Garching bei München">Garching bei München</option>
+            <option value="Gauchy">Gauchy</option>
+            <option value="General Escobedo">General Escobedo</option>
+            <option value="Germantown">Germantown</option>
+            <option value="Gersthofen">Gersthofen</option>
+            <option value="Gidy">Gidy</option>
+            <option value="Glen Burnie">Glen Burnie</option>
+            <option value="Gold Coast">Gold Coast</option>
+            <option value="Goyang">Goyang</option>
+            <option value="Grand Rapids">Grand Rapids</option>
+            <option value="Granite City">Granite City</option>
+            <option value="Gütersloh">Gütersloh</option>
+            <option value="Hadley">Hadley</option>
+            <option value="Halifax">Halifax</option>
+            <option value="Hanahan">Hanahan</option>
+            <option value="Hartford">Hartford</option>
+            <option value="Haverhill">Haverhill</option>
+            <option value="Hayes">Hayes</option>
+            <option value="Haymarket">Haymarket</option>
+            <option value="Hazelwood">Hazelwood</option>
+            <option value="Helsinki">Helsinki</option>
+            <option value="Holyoke">Holyoke</option>
+            <option value="Honolulu">Honolulu</option>
+            <option value="Huntington Beach">Huntington Beach</option>
+            <option value="Huntley">Huntley</option>
+            <option value="Hyattsville">Hyattsville</option>
+            <option value="Itaitinga">Itaitinga</option>
+            <option value="Jundiaí">Jundiaí</option>
+            <option value="Kagoshima">Kagoshima</option>
+            <option value="Katowice">Katowice</option>
+            <option value="Kearny">Kearny</option>
+            <option value="Knoxville">Knoxville</option>
+            <option value="Kochi">Kochi</option>
+            <option value="Kunshan">Kunshan</option>
+            <option value="Kurnool">Kurnool</option>
+            <option value="Kuwait City">Kuwait City</option>
+            <option value="La Crosse">La Crosse</option>
+            <option value="La Verrière">La Verrière</option>
+            <option value="Lakeland">Lakeland</option>
+            <option value="Lakewood">Lakewood</option>
+            <option value="Lehi">Lehi</option>
+            <option value="Leicester">Leicester</option>
+            <option value="Linden">Linden</option>
+            <option value="Lithia Springs">Lithia Springs</option>
+            <option value="Littlehampton">Littlehampton</option>
+            <option value="Livonia">Livonia</option>
+            <option value="Louisa">Louisa</option>
+            <option value="Ludhiana">Ludhiana</option>
+            <option value="Manaus">Manaus</option>
+            <option value="Manteca">Manteca</option>
+            <option value="Markham">Markham</option>
+            <option value="Maspeth">Maspeth</option>
+            <option value="McKinney">McKinney</option>
+            <option value="Mebane">Mebane</option>
+            <option value="Medford">Medford</option>
+            <option value="Meerut">Meerut</option>
+            <option value="Metz">Metz</option>
+            <option value="Mi Perú">Mi Perú</option>
+            <option value="Milford">Milford</option>
+            <option value="Mill Creek">Mill Creek</option>
+            <option value="Mississauga">Mississauga</option>
+            <option value="Montcada i Reixac">Montcada i Reixac</option>
+            <option value="Morton Grove">Morton Grove</option>
+            <option value="Moses Lake">Moses Lake</option>
+            <option value="Muras">Muras</option>
+            <option value="Málaga">Málaga</option>
+            <option value="Nampa">Nampa</option>
+            <option value="Neuwied">Neuwied</option>
+            <option value="New Century">New Century</option>
+            <option value="New Westminster">New Westminster</option>
+            <option value="Nomi">Nomi</option>
+            <option value="Norfolk">Norfolk</option>
+            <option value="Norristown">Norristown</option>
+            <option value="North East">North East</option>
+            <option value="North Haven">North Haven</option>
+            <option value="North Jackson">North Jackson</option>
+            <option value="Northampton">Northampton</option>
+            <option value="Norwood">Norwood</option>
+            <option value="Nottingham">Nottingham</option>
+            <option value="Nuremberg">Nuremberg</option>
+            <option value="O Porriño">O Porriño</option>
+            <option value="Ocala">Ocala</option>
+            <option value="Okinawa-Shi">Okinawa-Shi</option>
+            <option value="Olathe">Olathe</option>
+            <option value="Olive Branch">Olive Branch</option>
+            <option value="Oslo">Oslo</option>
+            <option value="Osnabrück">Osnabrück</option>
+            <option value="Oxnard">Oxnard</option>
+            <option value="Palmdale">Palmdale</option>
+            <option value="Papenburg">Papenburg</option>
+            <option value="Patterson">Patterson</option>
+            <option value="Pendleton">Pendleton</option>
+            <option value="Perranporth">Perranporth</option>
+            <option value="Perris">Perris</option>
+            <option value="Pflugerville">Pflugerville</option>
+            <option value="Philadelphia">Philadelphia</option>
+            <option value="Pioltello">Pioltello</option>
+            <option value="Pointe-Claire">Pointe-Claire</option>
+            <option value="Port Allen">Port Allen</option>
+            <option value="Poway">Poway</option>
+            <option value="Preston">Preston</option>
+            <option value="Prince George">Prince George</option>
+            <option value="Providence">Providence</option>
+            <option value="Rabat">Rabat</option>
+            <option value="Raunheim">Raunheim</option>
+            <option value="Recife">Recife</option>
+            <option value="Reggio nell'Emilia">Reggio nell'Emilia</option>
+            <option value="Reston">Reston</option>
+            <option value="Revere">Revere</option>
+            <option value="Riverside">Riverside</option>
+            <option value="Rivesaltes">Rivesaltes</option>
+            <option value="Romeoville">Romeoville</option>
+            <option value="Roseville">Roseville</option>
+            <option value="Rubí">Rubí</option>
+            <option value="Rutherford">Rutherford</option>
+            <option value="San Andrés Cholula">San Andrés Cholula</option>
+            <option value="San Juan">San Juan</option>
+            <option value="San Luis Obispo">San Luis Obispo</option>
+            <option value="San Marcos">San Marcos</option>
+            <option value="San Mateo">San Mateo</option>
+            <option value="Santa Catarina">Santa Catarina</option>
+            <option value="Santarcangelo di Romagna">Santarcangelo di Romagna</option>
+            <option value="Savannah">Savannah</option>
+            <option value="Scugog">Scugog</option>
+            <option value="Secunderabad">Secunderabad</option>
+            <option value="Sewickley">Sewickley</option>
+            <option value="Shirley">Shirley</option>
+            <option value="Signes">Signes</option>
+            <option value="Skokie">Skokie</option>
+            <option value="Smithfield">Smithfield</option>
+            <option value="Spring">Spring</option>
+            <option value="St Austell">St Austell</option>
+            <option value="St Peters">St Peters</option>
+            <option value="St Thomas">St Thomas</option>
+            <option value="Sterling Heights">Sterling Heights</option>
+            <option value="Stoke-on-Trent">Stoke-on-Trent</option>
+            <option value="Stone">Stone</option>
+            <option value="Stone Mountain">Stone Mountain</option>
+            <option value="Stratford">Stratford</option>
+            <option value="Sturtevant">Sturtevant</option>
+            <option value="Survilliers">Survilliers</option>
+            <option value="Suzhou">Suzhou</option>
+            <option value="Swedesboro">Swedesboro</option>
+            <option value="Syosset">Syosset</option>
+            <option value="Syracuse">Syracuse</option>
+            <option value="São João de Meriti">São João de Meriti</option>
+            <option value="Takatsuki">Takatsuki</option>
+            <option value="Tallinn">Tallinn</option>
+            <option value="Thiruvananthapuram">Thiruvananthapuram</option>
+            <option value="Timisoara">Timisoara</option>
+            <option value="Toledo">Toledo</option>
+            <option value="Tolleson">Tolleson</option>
+            <option value="Toyama">Toyama</option>
+            <option value="Tsukuba-Shi">Tsukuba-Shi</option>
+            <option value="Tultitlán">Tultitlán</option>
+            <option value="Turlock">Turlock</option>
+            <option value="Twinsburg">Twinsburg</option>
+            <option value="Tübingen">Tübingen</option>
+            <option value="Udine">Udine</option>
+            <option value="Vadodara">Vadodara</option>
+            <option value="Vapi">Vapi</option>
+            <option value="Varanasi">Varanasi</option>
+            <option value="Verona">Verona</option>
+            <option value="Vicenza">Vicenza</option>
+            <option value="Vijayawada">Vijayawada</option>
+            <option value="Villahermosa">Villahermosa</option>
+            <option value="Villeneuve-la-Garenne">Villeneuve-la-Garenne</option>
+            <option value="Walker">Walker</option>
+            <option value="Walldorf">Walldorf</option>
+            <option value="Wallingford">Wallingford</option>
+            <option value="West Lafayette">West Lafayette</option>
+            <option value="West Palm Beach">West Palm Beach</option>
+            <option value="West Sacramento">West Sacramento</option>
+            <option value="Whitby">Whitby</option>
+            <option value="Wolfsburg">Wolfsburg</option>
+            <option value="Worms">Worms</option>
+            <option value="Wuhan">Wuhan</option>
+            <option value="Yongin">Yongin</option>
+          </select>
+        </div>
+        <div id="alerts_grid">
+          <h3>ALERT SETTINGS<span class="required">*</span></h3>
+        </div>
+        <div id="alert_frequency_grid">
+          <select id="alert_frequency" data-trigger class="form-control" required>
+            <option value="" placeholder="">Alert Frequency</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div id="youremail_grid">
+          <input type="text" id="youremail" class="form-control" required />
+        </div>
+        <div id="lang_code_grid">
+          <select id="lang_code" data-trigger class="form-control" required>
+            <option value="cs">Čeština</option>
+            <option value="de">Deutsch</option>
+            <option value="en" selected>English (U.S.)</option>
+            <option value="en-gb">English (U.K.)</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="it">Italiano</option>
+            <option value="jp">日本語</option>
+            <option value="pl">Polski</option>
+            <option value="pt">Português (Brasil)</option>
+            <option value="zh">简体中文</option>
+          </select>
+        </div>
+        <div id="reset_button_grid">
+          <button type="reset" id="btn-delete">RESET</button>
+        </div>
+        <div id="submit_button_grid">
+          <button type="submit" id="btn-submit">GENERATE ALERT TEMPLATE</button>
         </div>
       </div>
     </div>
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        var searchBar = new Choices(
-          document.getElementById('search-bar'),
-          {
-            allowHTML: true,
-            delimiter: ' ',
-            editItems: true,
-            paste: true,
-            searchEnabled: false,
-            maxItemCount: 5,
-            maxItemText: "You may only add 5 search phrases",
-            searchChoices: false,
-            placeholder: true,
-            placeholderValue: "enter your search terms here",
-          });
-
-        var busCats = new Choices(
-            '#business_category',
-            {
-              allowHTML: true,
-              removeItemButton: true,
-              duplicateItemsAllowed: false,
-              editItems: false,
-              maxItemCount: 5,
-              searchEnabled: true,
-              itemSelectText: '',
-              paste: false,
-            }
-          );
-        var catCats = new Choices(
-            '#category',
-            {
-              allowHTML: true,
-              removeItemButton: true,
-              duplicateItemsAllowed: false,
-              editItems: false,
-              maxItemCount: 5,
-              searchEnabled: true,
-              itemSelectText: '',
-              paste: false,
-            }
-          );
-
-        var catTypes = new Choices(
-          '#category_type',
-          {
-            allowHTML: true,
-            removeItemButton: true,
-            duplicateItemsAllowed: false,
-            editItems: false,
-            maxItemCount: 5,
-            searchEnabled: false,
-            itemSelectText: '',
-            paste: false,
-          }
-        );
-
-        var jobTypes = new Choices(
-          '#job_type',
-          {
-            allowHTML: true,
-            removeItemButton: true,
-            duplicateItemsAllowed: false,
-            editItems: false,
-            maxItemCount: 5,
-            searchEnabled: false,
-            paste: false,
-            itemSelectText: '',
-          }
-        );
-
-        var isManager = new Choices(
-          '#is_manager',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: false,
-            searchEnabled: false,
-            paste: false,
-            itemSelectText: '',
-          }
-        );
-
-        var countries = new Choices(
-          '#country',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: true,
-            searchEnabled: true,
-            itemSelectText: '',
-            paste: true,
-          }
-        );
-
-        var states = new Choices(
-          '#state',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: true,
-            searchEnabled: true,
-            itemSelectText: '',
-            paste: true,
-          }
-        );
-
-        var cities = new Choices(
-          '#city',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: true,
-            searchEnabled: true,
-            itemSelectText: '',
-            paste: true,
-          }
-        );
-
-        var alertFrequency = new Choices(
-          '#alert_frequency',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: false,
-            searchEnabled: false,
-            itemSelectText: '',
-            paste: false,
-          }
-        );
-
-        var textEmailFilter = new Choices('#youremail', {
-          allowHTML: true,
-          editItems: true,
-          placeholderValue: 'Enter your email to receive alerts',
-          placeholder: true,
-          addItemFilter: function(value) {
-            if (!value) {
-              return false;
-            }
-
-            const regex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-            const expression = new RegExp(regex.source, 'i');
-            return expression.test(value);
-          },
-        });
-
-        var langCode = new Choices(
-          '#lang_code',
-          {
-            allowHTML: true,
-            duplicateItemsAllowed: false,
-            editItems: false,
-            searchEnabled: false,
-            itemSelectText: '',
-            paste: false,
-          }
-        );
-
-
-        var singleNoSearch = new Choices('#choices-single-no-search', {
-          allowHTML: true,
-          searchEnabled: false,
-          removeItemButton: true,
-          choices: [
-            { value: 'One', label: 'Label One' },
-            { value: 'Two', label: 'Label Two', disabled: true },
-            { value: 'Three', label: 'Label Three' },
-          ],
-        }).setChoices(
-          [
-            { value: 'Four', label: 'Label Four', disabled: true },
-            { value: 'Five', label: 'Label Five' },
-            { value: 'Six', label: 'Label Six', selected: true },
-          ],
-          'value',
-          'label',
-          false
-        );
-
-        var singlePresetOpts = new Choices('#choices-single-preset-options', {
-          allowHTML: true,
-          placeholder: true,
-        }).setChoices(
-          [
-            {
-              label: 'Group one',
-              id: 1,
-              disabled: false,
-              choices: [
-                { value: 'Child One', label: 'Child One', selected: true },
-                { value: 'Child Two', label: 'Child Two', disabled: true },
-                { value: 'Child Three', label: 'Child Three' },
-              ],
-            },
-            {
-              label: 'Group two',
-              id: 2,
-              disabled: false,
-              choices: [
-                { value: 'Child Four', label: 'Child Four', disabled: true },
-                { value: 'Child Five', label: 'Child Five' },
-                { value: 'Child Six', label: 'Child Six' },
-              ],
-            },
-          ],
-          'value',
-          'label'
-        );
-
-        var singleSelectedOpt = new Choices('#choices-single-selected-option', {
-          allowHTML: true,
-          searchFields: ['label', 'value', 'customProperties.description'],
-          choices: [
-            { value: 'One', label: 'Label One', selected: true },
-            { value: 'Two', label: 'Label Two', disabled: true },
-            {
-              value: 'Three',
-              label: 'Label Three',
-              customProperties: {
-                description: 'This option is fantastic',
-              },
-            },
-          ],
-        }).setChoiceByValue('Two');
-
-        var customChoicesPropertiesViaDataAttributes = new Choices(
-          '#choices-with-custom-props-via-html',
-          {
-            allowHTML: true,
-            searchFields: ['label', 'value', 'customProperties'],
-          }
-        );
-
-        var singleNoSorting = new Choices('#choices-single-no-sorting', {
-          allowHTML: true,
-          shouldSort: false,
-          labelId: 'choices-single-no-sorting-label',
-        });
-
-        var customTemplates = new Choices(
-          document.getElementById('choices-single-custom-templates'),
-          {
-            allowHTML: true,
-            callbackOnCreateTemplates: function(strToEl) {
-              var classNames = this.config.classNames;
-              var itemSelectText = this.config.itemSelectText;
-              return {
-                item: function({ classNames }, data) {
-                  return strToEl(
-                    '\
-                <div\
-                  class="' +
-                      String(classNames.item) +
-                      ' ' +
-                      String(
-                        data.highlighted
-                          ? classNames.highlightedState
-                          : classNames.itemSelectable
-                      ) +
-                      '"\
-                  data-item\
-                  data-id="' +
-                      String(data.id) +
-                      '"\
-                  data-value="' +
-                      String(data.value) +
-                      '"\
-                  ' +
-                      String(data.active ? 'aria-selected="true"' : '') +
-                      '\
-                  ' +
-                      String(data.disabled ? 'aria-disabled="true"' : '') +
-                      '\
-                  >\
-                  <span style="margin-right:10px;">🎉</span> ' +
-                      String(data.label) +
-                      '\
-                </div>\
-              '
-                  );
-                },
-                choice: function({ classNames }, data) {
-                  return strToEl(
-                    '\
-                <div\
-                  class="' +
-                      String(classNames.item) +
-                      ' ' +
-                      String(classNames.itemChoice) +
-                      ' ' +
-                      String(
-                        data.disabled
-                          ? classNames.itemDisabled
-                          : classNames.itemSelectable
-                      ) +
-                      '"\
-                  data-select-text="' +
-                      String(itemSelectText) +
-                      '"\
-                  data-choice \
-                  ' +
-                      String(
-                        data.disabled
-                          ? 'data-choice-disabled aria-disabled="true"'
-                          : 'data-choice-selectable'
-                      ) +
-                      '\
-                  data-id="' +
-                      String(data.id) +
-                      '"\
-                  data-value="' +
-                      String(data.value) +
-                      '"\
-                  ' +
-                      String(
-                        data.groupId > 0 ? 'role="treeitem"' : 'role="option"'
-                      ) +
-                      '\
-                  >\
-                  <span style="margin-right:10px;">👉🏽</span> ' +
-                      String(data.label) +
-                      '\
-                </div>\
-              '
-                  );
-                },
-              };
-            },
-          }
-        );
-
-        var resetSimple = new Choices(document.getElementById('reset-simple'), {
-          allowHTML: true,
-        });
-
-        var resetMultiple = new Choices('#reset-multiple', {
-          allowHTML: true,
-          removeItemButton: true,
-        });
-      });
-    </script>
-  </body>
+    </form>
+    <div id="outputsection" style="display: none">
+      <textarea id="jsonOutput" rows="50"></textarea>
+      <button id="copyButton">Copy to Clipboard</button>
+      <button id="saveButton">Save</button>
+    </div>
+  </div>
+  <script src="js/main.js">
+  </script>
+</body>
