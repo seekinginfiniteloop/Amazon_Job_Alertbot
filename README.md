@@ -45,21 +45,6 @@ It started as a simple lambda function but then I got sucked into an exploratory
 Of course, you can also easily modify the scripts to run locally, or on an instance of your choice.
 
 
-
-<!-- GETTING STARTED -->
-## Getting Started
-
-I'll be adding a SAM template for automated deployment soon; in the meantime:
-
-The script is ready to deploy as a Lambda function. To get it running, you need to:
-
-### On Your Computer:
-
-- Clone the repo
-- Complete the [config/config.toml](/config/config.toml) to match your desired search criteria and settings. **NOTE: All fields are required even if left blank**
-- Configure AWS CLI for access (`aws configure`) if you haven't already.
-- run `python config/toml_to_ssm_paramstore.py` to automagically add your config parameters to your paramstore. **Your AWS role must have ssm:PutParameter permissions in IAM**
-
 <!-- CONTRIBUTING -->
 ## Contributing
 
