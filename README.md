@@ -31,7 +31,7 @@ SOFTWARE.
 Amazon Jobs Alertbot is an AWS-powered job alert agent that scrapes amazon.jobs with your search criteria and emails you updates... because Amazon apparently doesn't want you to be able to get updates the easy way.
 
 
-## This project isn't dead; it's mostly functional, I just need to finish up the email templating. I'm taking a break to work on other things for awhile.
+## okay okay... this project is dead, but it is mostly functional; all I had left was the web interface for generating search jsons
 
 <!-- ABOUT THE PROJECT -->
 ## About Amazon Job Alertbot
